@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.6.1
+npm install github:unbiased-dev/bsig#v0.6.2
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.6.1
+npm install github:unbiased-dev/bsig#v0.6.2
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -152,13 +152,16 @@ sign-in/up/out, and refresh triggers), held in bsig signals. A build that never
 imports it leaves it out of the bundle:
 
 ```ts
-import { initAuth, session, signInEmail, startSessionRefresh } from 'bsig/auth';
+import { initAuth, loadSession, session, signInEmail, signOut, startSessionRefresh } from 'bsig/auth';
 
 initAuth(); // baseURL defaults to window.location.origin
 startSessionRefresh(); // focus / online / cross-tab / polling
+await loadSession(); // read once (boot / route guards); no-op afterwards
 
 await signInEmail({ email, password });
 console.log(session.value?.user.name);
+
+const { error } = await signOut(); // clears the store only when the server confirms
 ```
 
 It speaks the better-auth endpoints over plain `fetch`, so there is no
@@ -180,12 +183,12 @@ Three skills ship in the package, installed with one command each (replace
   errors, cookie rotation, refresh triggers, type extension).
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill          # bsig skill
-npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill router   # router skill
-npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill auth     # auth skill
+npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill          # bsig skill
+npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill router   # router skill
+npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill auth     # auth skill
 # or, for the router/auth skill:
-#   npx -p github:unbiased-dev/bsig#v0.6.1 bsig-router-skill
-#   npx -p github:unbiased-dev/bsig#v0.6.1 bsig-auth-skill
+#   npx -p github:unbiased-dev/bsig#v0.6.2 bsig-router-skill
+#   npx -p github:unbiased-dev/bsig#v0.6.2 bsig-auth-skill
 ```
 
 Default target is `.agents/skills/<skill>/` (discovered by OpenCode, Claude

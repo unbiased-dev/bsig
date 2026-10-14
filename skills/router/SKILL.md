@@ -158,7 +158,7 @@ Hooks may be async.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill router
-# or: npx -p github:unbiased-dev/bsig#v0.6.1 bsig-router-skill
+npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill router
+# or: npx -p github:unbiased-dev/bsig#v0.6.2 bsig-router-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```

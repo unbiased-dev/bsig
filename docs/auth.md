@@ -37,6 +37,7 @@ requests — so the defaults work when the auth server shares your origin.
 State lives in signals, so it stays live in JSX:
 
 ```tsx
+import { Show } from 'bsig';
 import { isPending, isRefetching, session, sessionError } from 'bsig/auth';
 
 const user = session.value?.user;
@@ -216,11 +217,12 @@ Exported type names: `AuthTypes`, `Session`, `AuthUser`, `AuthSession`,
 | --- | --- |
 | `initAuth(options?)` | Configure `baseURL`, `fetchOptions`, `sessionOptions`. |
 | `session`, `isPending`, `isRefetching`, `sessionError` | Signals holding the session store. |
-| `refreshSession()` | Re-read the session cookie. |
+| `refreshSession()` | Re-read the session cookie (always refetches). |
+| `loadSession()` | Read the session once for boot/guards; no-op after the first settle. |
 | `startSessionRefresh()` | Wire passive refetches; returns cleanup. |
 | `signInEmail(credentials)` | `POST /sign-in/email`, then refresh. |
 | `signUpEmail(input)` | `POST /sign-up/email`, then refresh. |
-| `signOut()` | `POST /sign-out`, clear `session`, broadcast. |
+| `signOut()` | `POST /sign-out`; clears `session` + broadcasts only on success, else returns `{ error }`. |
 | `authFetch(path, init?)` | Raw request against any `/api/auth` endpoint. |
 | `Session`, `AuthUser`, `AuthSession`, `AuthError`, … | Types. |
 

@@ -1,6 +1,6 @@
 {
   "name": "bsig",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
   "bin": {
@@ -61,6 +61,7 @@
     "vendor/",
     "skills/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "sideEffects": false,

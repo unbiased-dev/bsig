@@ -5,6 +5,23 @@ GitHub by tag (`npm install github:unbiased-dev/bsig#vX.Y.Z`), so **the tag is
 the release**; versions below track the tagged releases. Semver-ish: **minor**
 for new capability, **patch** for fixes.
 
+## v0.6.2 — 2026-10-14
+
+Two consumer-reported fixes to `bsig/auth`:
+
+- **`signOut()` no longer reports success on a failed request.** It clears
+  `session` and broadcasts to other tabs **only when the server confirms**. A
+  failed request — a network error, or a CSRF `403` such as
+  `MISSING_OR_NULL_ORIGIN` — keeps the session and returns `{ error }`, so the
+  next refetch can no longer resurrect a session that was never revoked. Return
+  type is now `Promise<{ error: AuthError | null }>`.
+- **Added `loadSession()`.** The memoized initial read for boot and route
+  guards: the first call fetches, later calls resolve instantly, so guards that
+  await it on every navigation do not re-hit the network. `refreshSession()`
+  stays the force-refetch.
+- Docs/skill fixes: corrected the `signOut()` description and added the missing
+  `<Show>` imports to the examples.
+
 ## v0.6.1 — 2026-10-14
 
 Fixes three issues reported by a consumer building an app with `bsig/router`.

@@ -1,6 +1,6 @@
 ---
 name: auth
-description: Use when working with bsig/auth — the small signal-native better-auth client. Covers initAuth, the session/isPending/isRefetching/sessionError signals, signInEmail/signUpEmail/signOut, refreshSession, startSessionRefresh triggers, fetchOptions hooks, needsRefresh cookie rotation, authFetch for other endpoints, and registering your own Session/User types via `AuthTypes`. No better-auth dependency.
+description: Use when working with bsig/auth — the small signal-native better-auth client. Covers initAuth, the session/isPending/isRefetching/sessionError signals, signInEmail/signUpEmail/signOut, refreshSession/loadSession, startSessionRefresh triggers, fetchOptions hooks, needsRefresh cookie rotation, authFetch for other endpoints, and registering your own Session/User types via `AuthTypes`. No better-auth dependency.
 ---
 
 # bsig/auth
@@ -21,6 +21,7 @@ with `() =>` wrappers. Import the runtime from `bsig`, the client from
 ## Quick start
 
 ```tsx
+import { Show } from 'bsig';
 import { initAuth, session, isPending, signInEmail, signOut, startSessionRefresh } from 'bsig/auth';
 
 initAuth({ baseURL: 'https://api.example.com' }); // defaults to window.location.origin
@@ -35,7 +36,7 @@ function UserBadge() {
 }
 
 await signInEmail({ email, password }); // { error }
-await signOut();
+await signOut(); // { error }; clears only on success
 ```
 
 It targets `<baseURL>/api/auth` — `GET /get-session`, `POST /sign-in/email`,
@@ -50,13 +51,19 @@ It targets `<baseURL>/api/auth` — `GET /get-session`, `POST /sign-in/email`,
   the first request settles), `isRefetching` (in-flight), `sessionError`
   (`AuthError | null`). Read them in JSX; they are live.
 - **`refreshSession()`** — re-read the session cookie. Concurrent calls collapse
-  into one request.
+  into one request (always refetches).
+- **`loadSession()`** — read the session once for boot and route guards; resolves
+  immediately after the first attempt, so guards awaiting it per navigation do
+  not re-hit the network. Use `refreshSession()` to force a refetch.
 - **`startSessionRefresh()`** — wire focus / online / cross-tab / polling
   triggers; returns a cleanup function. Call it once.
 - **`signInEmail({ email, password })`**, **`signUpEmail({ name, email, password })`**
   → `Promise<{ error: AuthError | null }>`. On success they broadcast to other
   tabs, then refresh the session.
-- **`signOut()`** → clears `session` immediately, then broadcasts.
+- **`signOut()`** → `Promise<{ error: AuthError | null }>`. Clears `session` and
+  broadcasts **only when the server confirms**; on failure the session is kept
+  (a failed POST leaves the cookie intact, so clearing locally would be
+  resurrected by the next refetch).
 - **`authFetch(path, init?)`** → `Promise<{ data, error }>` against any
   `/api/auth` endpoint (social sign-in, password reset, …).
 
@@ -122,7 +129,7 @@ claim about the wire; convert in `onSuccess` if you need real `Date`s.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill auth
-# or: npx -p github:unbiased-dev/bsig#v0.6.1 bsig-auth-skill
+npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill auth
+# or: npx -p github:unbiased-dev/bsig#v0.6.2 bsig-auth-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```
