@@ -133,6 +133,11 @@ Hooks may be async.
 - **Single active router** per app (module-global `activeRouter`). `<Link />`
   and `<Outlet />` resolve it; outside a rendered `<Router />` they render
   `null`.
+- **Mountable anywhere.** `<Router />` works as the app root or nested inside
+  another component — including conditionally, e.g. wrapped in `<Show>` (its
+  children are thunked so each activation remounts it). Layouts may return a
+  fragment root. Config props (`routes`/`router`/`notFound`/`beforeEnter`) are
+  unwrapped from the plugin's auto-thunks, so passing them by reference is fine.
 - `<Router />` runs its setup eagerly (initial boot + `navigate` listener)
   because bsig only flushes `onMount` for the root component and
   dynamically-inserted children.
@@ -153,7 +158,7 @@ Hooks may be async.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill router
-# or: npx -p github:unbiased-dev/bsig#v0.6.0 bsig-router-skill
+npx -p github:unbiased-dev/bsig#v0.6.1 bsig-skill router
+# or: npx -p github:unbiased-dev/bsig#v0.6.1 bsig-router-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```

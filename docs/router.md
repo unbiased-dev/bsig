@@ -55,6 +55,13 @@ mount(document.getElementById('app')!, () => <Router routes={routes} />);
 `<Router routes={...} />` creates its own instance. Pass `router={instance}`
 instead if you built one with `createRouter()` (e.g. to read `router.pathname`).
 
+The root layout may return a fragment (`<><nav/><Outlet/></>`); a fragment root
+is resolved like any other. `<Router>` can be mounted anywhere a component can —
+as the app root or nested inside another component, including conditionally
+(such as inside `<Show>`). Its config props (`routes`, `router`, `notFound`,
+`beforeEnter`) are read back out of the JSX plugin's auto-thunks, so passing them
+by reference works as written.
+
 ## 2. Nested routes and params
 
 Add `children` and render another `<Outlet/>` inside the parent page. The depth

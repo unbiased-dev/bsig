@@ -438,3 +438,22 @@ describe('Transition', () => {
     assert.equal(target.querySelector('.box'), null, 'removed after transitionend');
   });
 });
+
+describe('append (dynamic child resolution)', () => {
+  it('resolves a thunk nested below a returned array (fragment/outlet depth)', async () => {
+    // Mirrors a fragment layout root: the dynamic child yields an array whose
+    // outlet thunk returns an array holding the page thunk. The old single
+    // unwrap pass stringified the innermost thunk instead of resolving it.
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(
+      target,
+      () => () => ['x', () => [() => h('p', null, 'deep')]],
+    );
+    await flush();
+    assert.equal(target.textContent, 'xdeep');
+    assert.ok(target.querySelector('p'), 'innermost thunk resolved to a node');
+    unmount();
+    target.remove();
+  });
+});

@@ -35,6 +35,17 @@ describe('auto-thunk', () => {
     const out = await t(`const a = <p>{() => v.value};</p>;`);
     assert.ok(!out.includes('() => () =>'), out);
   });
+
+  it('thunks <Show> element children so each activation rebuilds them', async () => {
+    const out = await t(`const a = <Show when={c.value}><b>{x.value}</b></Show>;`);
+    assert.match(out, /h\(Show, \{[\s\S]*\}, \(\) => h\("b"/);
+    // a nested component child is wrapped too, not just the outer element
+    const nested = await t(`const a = <Show when={c.value}><Layout><b/></Layout></Show>;`);
+    assert.match(nested, /\(\) => h\(Layout/);
+    // expression children are already thunked; do not double-wrap
+    const expr = await t(`const a = <Show when={c.value}>{<b/>}</Show>;`);
+    assert.ok(!expr.includes('() => () =>'), expr);
+  });
 });
 
 describe('package manifest', () => {

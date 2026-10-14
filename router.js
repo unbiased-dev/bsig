@@ -375,13 +375,31 @@ export function createRouter(options) {
   return api;
 }
 
+// The JSX plugin auto-thunks dynamic props, so a config prop passed by
+// reference (`<Router routes={routes} />`) arrives as `() => routes`. Unwrap
+// one level: config props are plain values, never live bindings.
+const unwrap = (v) => (typeof v === 'function' ? v() : v);
+
+// A guard is itself a function, so it may arrive either directly (written as a
+// function expression, untouched by the plugin) or wrapped in a plugin thunk
+// (`beforeEnter={guard}` -> `() => guard`). Resolve at call time: a thunk is
+// zero-arg and returns the guard, while a real zero-arg guard returns its
+// verdict. Calling it lazily avoids invoking a guard during setup.
+const asGuard = (v) => {
+  if (typeof v !== 'function' || v.length > 0) return v;
+  return (ctx) => {
+    const guard = v();
+    return typeof guard === 'function' ? guard(ctx) : guard;
+  };
+};
+
 export const Router = (props) => {
   const router =
-    props.router ??
+    unwrap(props.router) ??
     createRouter({
-      routes: props.routes,
-      notFound: props.notFound,
-      beforeEnter: props.beforeEnter,
+      routes: unwrap(props.routes),
+      notFound: unwrap(props.notFound),
+      beforeEnter: asGuard(props.beforeEnter),
     });
   activeRouter = router;
   const nav = window.navigation;

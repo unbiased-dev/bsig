@@ -256,6 +256,19 @@ const fireMounts = (node, force) => {
   }
 };
 
+// Turn a dynamic child's value into concrete nodes. Arrays are lists and
+// functions are thunks, so resolve both recursively: a fragment layout's
+// outlet reaches its page through `Outlet -> RouteNode -> page`, each adding
+// a thunk/array layer. A single unwrap pass left the deepest thunk
+// stringified as text.
+const resolveChild = (value, out) => {
+  if (value === null || value === undefined || value === false) return out;
+  if (Array.isArray(value)) value.forEach((v) => resolveChild(v, out));
+  else if (isFn(value)) resolveChild(value(), out);
+  else out.push(isNode(value) ? value : document.createTextNode(String(value)));
+  return out;
+};
+
 const append = (parent, child) => {
   if (child === null || child === undefined || child === false) return null;
   if (Array.isArray(child)) {
@@ -274,12 +287,7 @@ const append = (parent, child) => {
     let nodes = [];
     const outer = effect(() => {
       effect(() => {
-        const newNodes = [child()]
-          .flat(Infinity)
-          .map((node) => (isFn(node) ? node() : node))
-          .flat(Infinity)
-          .filter((node) => node !== null && node !== undefined && node !== false)
-          .map((node) => (isNode(node) ? node : document.createTextNode(String(node))));
+        const newNodes = resolveChild(child(), []);
         // Drop vanished nodes (stops scopes, honors leave transitions).
         const kept = new Set(newNodes);
         nodes.forEach((n) => {

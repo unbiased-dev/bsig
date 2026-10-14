@@ -16,6 +16,21 @@ function autoThunkPlugin({ types: t }) {
 
   return {
     visitor: {
+      // `<Show>` mounts/unmounts its children on every toggle, but JSX
+      // evaluates element children eagerly, so a component child would be
+      // built once and reused. Its effects are stopped on removal and never
+      // revived, leaving the re-shown subtree frozen. Hand Show its children
+      // as thunks so each activation rebuilds them (same shape the plugin
+      // already produces for `{...}` expression children).
+      JSXElement(path) {
+        const name = path.node.openingElement.name;
+        if (!t.isJSXIdentifier(name) || name.name !== 'Show') return;
+        path.node.children = path.node.children.map((child) =>
+          t.isJSXElement(child) || t.isJSXFragment(child)
+            ? t.jsxExpressionContainer(t.arrowFunctionExpression([], child))
+            : child,
+        );
+      },
       JSXAttribute(path) {
         const name = path.node.name?.name;
         if (!name || typeof name !== 'string') return;
