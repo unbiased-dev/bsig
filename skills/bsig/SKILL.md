@@ -33,7 +33,7 @@ signal update.
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.4.0
+npm install github:unbiased-dev/bsig#v0.5.0
 ```
 
 ## Bun alternative

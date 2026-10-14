@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.4.0
+npm install github:unbiased-dev/bsig#v0.5.0
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.4.0
+npm install github:unbiased-dev/bsig#v0.5.0
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -144,23 +144,28 @@ mount(document.getElementById('app')!, () => <Router routes={routes} />);
 Full guide: [`docs/router.md`](docs/router.md). Requires the Navigation API
 (Chromium); it degrades to full navigations elsewhere.
 
-## Agent skill (bsig for AI assistants)
+## Agent skills (bsig for AI assistants)
 
-`skills/bsig/SKILL.md` teaches coding agents the full bsig API — signals,
-effects, `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the
-React habits that don't apply. One command drops it into the current project
-(replace `v0.4.0` with the newest tag):
+Two skills ship in the package, installed with one command each (replace
+`v0.5.0` with the newest tag):
+
+- `skills/bsig/SKILL.md` — the full bsig API: signals, effects,
+  `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the React habits
+  that don't apply.
+- `skills/router/SKILL.md` — the `bsig/router` API and gotchas (parent
+  preservation, parallel guards, matching rules).
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.4.0 bsig-skill
-# or: bunx --package github:unbiased-dev/bsig#v0.4.0 bsig-skill
+npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill          # bsig skill
+npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill router   # router skill
+# or, for the router skill: npx -p github:unbiased-dev/bsig#v0.5.0 bsig-router-skill
 ```
 
-Default target is `.agents/skills/bsig/` (discovered by OpenCode, Claude
+Default target is `.agents/skills/<skill>/` (discovered by OpenCode, Claude
 Code, and other agents). Variants: `--opencode` (`.opencode/skills/`),
 `--claude` (`.claude/skills/`), `--global` (`~/.config/opencode/skills/`),
-`--dest <dir>`, `--help`. Manual fallback is a plain copy of
-`skills/bsig/SKILL.md` from the repo.
+`--dest <dir>`, `--help`. Manual fallback is a plain copy of `skills/<skill>/SKILL.md`
+from the repo.
 
 ## How it stays tiny
 
