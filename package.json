@@ -1,6 +1,6 @@
 {
   "name": "bsig",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
   "bin": {
@@ -28,6 +28,11 @@
       "types": "./jsx-runtime.d.ts",
       "import": "./jsx-runtime.js",
       "default": "./jsx-runtime.js"
+    },
+    "./bun-plugin": {
+      "types": "./plugin/bun.d.ts",
+      "import": "./plugin/bun.js",
+      "default": "./plugin/bun.js"
     },
     "./package.json": "./package.json"
   },

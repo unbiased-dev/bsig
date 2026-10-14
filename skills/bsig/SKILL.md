@@ -33,8 +33,18 @@ signal update.
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.3.3
+npm install github:unbiased-dev/bsig#v0.3.5
 ```
+
+## Bun alternative
+
+Same ergonomics without Vite: `bsig/bun-plugin` in `bunfig.toml`
+`[serve.static] plugins`, plus `"jsx": "react-jsx", "jsxImportSource": "bsig"`
+in `tsconfig.json`. Without the plugin, plain `{count.value}` renders once
+and goes static — hand-write `() =>` thunks or, better, use the plugin.
+Without any bundler transform at all (e.g. hand-rolled `jsx()` calls),
+`{() => count.value}` children and `prop={() => …}` props stay reactive
+because `h()` subscribes function values; eager values never do.
 
 `vite.config.ts`:
 

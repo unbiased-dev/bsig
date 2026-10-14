@@ -41,7 +41,7 @@ describe('package manifest', () => {
   it('exports runtime, plugin, and both JSX runtimes', async () => {
     const fs = await import('node:fs');
     const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    for (const key of ['.', './plugin', './jsx-runtime', './jsx-dev-runtime']) {
+    for (const key of ['.', './plugin', './jsx-runtime', './jsx-dev-runtime', './bun-plugin']) {
       assert.ok(pkg.exports[key], `${key} exported`);
     }
     // dev + prod JSX runtimes resolve to files that exist in the packlist
