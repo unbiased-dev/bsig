@@ -1,6 +1,6 @@
 {
   "name": "bsig",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
   "main": "./runtime.js",
@@ -34,6 +34,7 @@
     "jsx-runtime.js",
     "jsx-runtime.d.ts",
     "plugin/",
+    "skills/",
     "README.md",
     "LICENSE"
   ],
