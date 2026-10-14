@@ -1,4 +1,11 @@
 import { h, signal, For, Show, Component, Transition } from 'bsig';
+import bsig from 'bsig/plugin';
+import type { Plugin } from 'vite';
+
+// The plugin object must satisfy Vite's Plugin type.
+const _p: Plugin = bsig();
+const _q: Plugin = bsig({ runtime: './src/runtime.js' });
+export { _p, _q };
 
 // Single-arg components, children on props.
 function Card(props: { title?: string; children?: unknown }) {
