@@ -34,7 +34,8 @@
   },
   "dependencies": {
     "@babel/core": "7.29.7",
-    "@babel/plugin-transform-react-jsx": "7.29.7"
+    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "@babel/plugin-transform-typescript": "7.29.9"
   },
   "devDependencies": {
     "esbuild": "0.21.5",

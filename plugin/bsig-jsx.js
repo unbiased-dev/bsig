@@ -1,5 +1,6 @@
 import { transformAsync } from '@babel/core';
 import jsxTransform from '@babel/plugin-transform-react-jsx';
+import tsTransform from '@babel/plugin-transform-typescript';
 import path from 'node:path';
 
 const toPosix = (p) => p.split(path.sep).join('/');
@@ -72,23 +73,39 @@ export default function bsig(opts = {}) {
     enforce: 'pre',
     async transform(code, id) {
       const cleanId = id.split('?')[0];
-      if (!cleanId.endsWith('.jsx')) return null;
+      // .tsx needs the TS syntax transform too; plain .ts has no JSX.
+      const isTsx = cleanId.endsWith('.tsx');
+      if (!cleanId.endsWith('.jsx') && !isTsx) return null;
       // skip runtime + plugin itself (no JSX there anyway)
       if (cleanId.endsWith('runtime.js') || cleanId.includes('bsig-jsx')) return null;
       if (!code.includes('<')) return null;
-      // Auto-import h so JSX files don't need `import { h }`.
-      // Only when the file doesn't already bring h into scope.
-      const hasHImport =
-        /import\s*\{[^}]*\bh\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(code) ||
-        /import\s+h\b\s*[,{]/.test(code) ||
-        /import\s+h\s+from\s*['"]/.test(code);
-      let input = code;
-      if (!hasHImport) {
-        // Default: import h from the bsig package itself. This must be a
-        // package specifier (not a relative path) so every consumer file —
-        // no matter how deeply nested — resolves to the SAME module
-        // instance. A relative default once caused a dual-runtime bug where
-        // signals updated but the DOM never did.
+      const result = await transformAsync(code, {
+        filename: cleanId,
+        presets: [],
+        plugins: [
+          autoThunkPlugin,
+          [jsxTransform, { pragma: 'h', pragmaFrag: 'null' }],
+          ...(isTsx ? [[tsTransform, { isTSX: true, allExtensions: true }]] : []),
+        ],
+        ast: false,
+        code: true,
+        babelrc: false,
+        configFile: false,
+      });
+      if (!result?.code) return null;
+      let out = result.code;
+      // Auto-import h when the output actually calls it and nothing in scope
+      // provides it. Done post-transform (not pre-) because the TS pass
+      // elides imports before the JSX pass creates the h() references.
+      // Package specifier, never relative: every file must resolve to the
+      // SAME runtime instance (a relative default once caused a dual-runtime
+      // bug where signals updated but the DOM never did).
+      const usesH = /(?<!\.)\bh\s*\(/.test(out);
+      const hasH =
+        /import\s*\{[^}]*\bh\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(out) ||
+        /import\s+h\b\s*[,{]/.test(out) ||
+        /import\s+h\s+from\s*['"]/.test(out);
+      if (usesH && !hasH) {
         let spec = 'bsig';
         if (opts.runtime) {
           const runtimeAbs = path.resolve(opts.runtime);
@@ -96,21 +113,9 @@ export default function bsig(opts = {}) {
           if (!rel.startsWith('.')) rel = './' + rel;
           spec = rel;
         }
-        input = `import { h } from ${JSON.stringify(spec)};\n` + code;
+        out = `import { h } from ${JSON.stringify(spec)};\n` + out;
       }
-      const result = await transformAsync(input, {
-        filename: cleanId,
-        presets: [],
-        plugins: [
-          autoThunkPlugin,
-          [jsxTransform, { pragma: 'h', pragmaFrag: 'null' }],
-        ],
-        ast: false,
-        code: true,
-        babelrc: false,
-        configFile: false,
-      });
-      return result?.code ? { code: result.code, map: null } : null;
+      return { code: out, map: null };
     },
   };
 }

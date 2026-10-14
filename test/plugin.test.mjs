@@ -60,8 +60,23 @@ describe('h auto-import', () => {
     assert.equal(out.match(/runtime\.js/g).length, 1);
   });
 
-  it('ignores non-JSX and non-jsx files', async () => {
+  it('ignores non-JSX and non-jsx/tsx files', async () => {
     assert.equal(await t(`const a = 1;`, '/proj/src/D.jsx'), null);
     assert.equal(await t(`const a = <div/>;`, '/proj/src/E.js'), null);
+    assert.equal(await t(`const a = 1;`, '/proj/src/F.tsx'), null);
+  });
+
+  it('transforms .tsx: strips types, wraps dynamics, keeps h import', async () => {
+    const plugin = (await import('../plugin/bsig-jsx.js')).default();
+    const src = `import { signal } from 'bsig';
+const count: number = signal(0);
+type P = { t?: string };
+export default function A(p: P) {
+  return <div class={count.value > 1 ? 'm' : 'f'}><p>{count.value}: {p.t as string}</p></div>;
+}`;
+    const out = (await plugin.transform(src, '/proj/src/A.tsx')).code;
+    assert.ok(!out.includes(': number') && !out.includes('as string') && !out.includes('type P'), 'types stripped');
+    assert.match(out, /\(\) => count\.value/);
+    assert.match(out, /import \{ h \} from "bsig"/);
   });
 });
