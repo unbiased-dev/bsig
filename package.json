@@ -1,6 +1,6 @@
 {
   "name": "bsig",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
   "main": "./runtime.js",
@@ -17,6 +17,11 @@
       "default": "./plugin/bsig-jsx.js"
     },
     "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "import": "./jsx-runtime.js",
+      "default": "./jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
       "types": "./jsx-runtime.d.ts",
       "import": "./jsx-runtime.js",
       "default": "./jsx-runtime.js"

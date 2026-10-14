@@ -37,6 +37,27 @@ describe('auto-thunk', () => {
   });
 });
 
+describe('package manifest', () => {
+  it('exports runtime, plugin, and both JSX runtimes', async () => {
+    const fs = await import('node:fs');
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    for (const key of ['.', './plugin', './jsx-runtime', './jsx-dev-runtime']) {
+      assert.ok(pkg.exports[key], `${key} exported`);
+    }
+    // dev + prod JSX runtimes resolve to files that exist in the packlist
+    for (const key of ['./jsx-runtime', './jsx-dev-runtime']) {
+      const file = pkg.exports[key].import.replace('./', '');
+      assert.ok(fs.existsSync(new URL(`../${file}`, import.meta.url)), file);
+      assert.ok(pkg.files.some((f) => file === f || file.startsWith(f.replace(/\/$/, ''))), `${file} packed`);
+    }
+  });
+
+  it('jsx-dev-runtime exposes jsx/jsxs/Fragment like the prod one', async () => {
+    const prod = await import('../jsx-runtime.js');
+    assert.deepEqual(Object.keys(prod).sort(), ['Fragment', 'jsx', 'jsxs']);
+  });
+});
+
 describe('h auto-import', () => {
   it('injects once when missing', async () => {
     const out = await t(`const a = <div/>;`, '/proj/src/A.jsx');
