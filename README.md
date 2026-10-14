@@ -8,38 +8,47 @@ Write plain JSX — `{name.value}`, `disabled={off.value}`, `{show.value && <spa
 
 ## Start a new project
 
-Fastest — clone the Vite + TS template (pre-wired plugin, typechecking, example
-counter/list/conditional):
-
-```sh
-npx degit unbiased-dev/bsig/template my-app
-cd my-app
-npm install
-npm run dev
-```
-
-Or from a stock Vite template (`vanilla-ts` — there is no bsig template in
-`create-vite` itself):
+No template needed (pinned templates go stale) — stock `create-vite` plus
+three wires, verified against current Vite + TS releases:
 
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.1.1
+npm install github:unbiased-dev/bsig#v0.2.0
 ```
 
-Then wire three things: the plugin in `vite.config.ts`
-(`import bsig from 'bsig/plugin'` + `plugins: [bsig()]`), classic JSX in
-`tsconfig.json` (`"jsx": "react", "jsxFactory": "h"`), and write `.tsx`
-components importing `{ h }` from `'bsig'` (the factory must be in scope for
-`tsc`; the plugin leaves files that already import it alone). See
-`template/` for the complete working setup.
+1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
+2. `tsconfig.json` — `"jsx": "react-jsx", "jsxImportSource": "bsig"`
+3. Write `.tsx` — no `h` import needed, ever:
+
+```tsx
+import { signal, For } from 'bsig';
+
+const count = signal(0);
+
+export default function App() {
+  return (
+    <div>
+      <p>Count: {count.value}</p>
+      <button onClick={() => count.value++}>+</button>
+    </div>
+  );
+}
+```
+
+Why this works without `h` in scope: the automatic JSX runtime
+(`bsig/jsx-runtime`, used by `tsc` for types) plus the Vite plugin (which
+compiles JSX to lazy thunks ahead of time, skipping `on*`/`ref`/statics).
+It typechecks even under stock strict configs (`noUnusedLocals`,
+`verbatimModuleSyntax`). The classic factory (`jsxFactory: "h"` + explicit
+`h` imports) keeps working if you prefer it.
 
 ## Install
 
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.1.1
+npm install github:unbiased-dev/bsig#v0.2.0
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.

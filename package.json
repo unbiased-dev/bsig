@@ -12,11 +12,18 @@
       "default": "./runtime.js"
     },
     "./plugin": "./plugin/bsig-jsx.js",
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "import": "./jsx-runtime.js",
+      "default": "./jsx-runtime.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "runtime.js",
     "runtime.d.ts",
+    "jsx-runtime.js",
+    "jsx-runtime.d.ts",
     "plugin/",
     "README.md",
     "LICENSE"

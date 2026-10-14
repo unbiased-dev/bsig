@@ -6,6 +6,9 @@
 
 const isFn = (v) => typeof v === 'function';
 const isNode = (v) => v instanceof Node;
+// Classic JSX delivers children as arg arrays; the automatic runtime puts a
+// lone child unwrapped in props.children. Normalize without splitting strings.
+const kidArray = (v) => (Array.isArray(v) ? v.flat(Infinity) : v == null ? [] : [v]);
 
 /*----- Schedule -----*/
 let isScheduled = false;
@@ -173,7 +176,7 @@ export const h = (tag, props, ...children) => {
     return el;
   }
 
-  if (!tag) return () => children;
+  if (!tag) return () => (children.length ? children : (props.children ?? []));
 
   let el = document.createElement(tag), is_svg;
   if (el instanceof HTMLUnknownElement) {
@@ -189,7 +192,9 @@ export const h = (tag, props, ...children) => {
     else key in el && !is_svg ? (el[key] = props[key]) : el.setAttribute(key, props[key]);
   }
 
-  children.forEach((child) => append(el, child));
+  // Classic JSX passes children as args; the automatic runtime puts them in
+  // props.children. Render exactly one source, never both.
+  (children.length ? children : [props.children].flat(Infinity)).forEach((child) => append(el, child));
   return el;
 };
 
@@ -309,7 +314,7 @@ export const If = (cond, renderFn, fallback = null) => {
 // <Show when={...} fallback={...}>...</Show> — plugin auto-thunks `when`,
 // but signals and plain values work too.
 export const Show = (props) => {
-  const kids = (props.children || []).flat(Infinity);
+  const kids = kidArray(props.children);
   const when = isFn(props.when) ? props.when : () => props.when?.value ?? props.when;
   return If(when, () => kids, props.fallback ?? null);
 };
@@ -337,7 +342,7 @@ export const Component = (props) => {
 
 export const Transition = (props) => {
   const { enter: e, idle, leave: l } = props;
-  const [c] = (props.children || []).flat(Infinity);
+  const [c] = kidArray(props.children);
   const decorate = (el) => {
     if (!isNode(el)) return el;
     const addClass = (x) => x && el.classList.add(...x.split(' '));
