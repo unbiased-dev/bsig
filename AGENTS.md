@@ -35,8 +35,9 @@ case, it belongs in an opt-in entry — or not at all.
 | `plugin/transform.js` | Shared Babel transform: auto-thunk dynamic JSX, strip TS, inject the `h` import. |
 | `plugin/bsig-jsx.js`, `plugin/bun.js` | Vite and Bun plugins; `.d.ts` siblings. |
 | `router.js` / `router.d.ts` | Opt-in `bsig/router`: nested routes, guards, lazy, scroll restoration. |
+| `auth.js` / `auth.d.ts` | Opt-in `bsig/auth`: zero-dependency better-auth client (sessions, email sign-in/up/out, refresh triggers). |
 | `vendor/` | Vendored third-party source + license. |
-| `skills/` | Agent skills and installers (`bsig-skill`, `bsig-router-skill`). |
+| `skills/` | Agent skills and installers (`bsig-skill`, `bsig-router-skill`, `bsig-auth-skill`). |
 | `test/` | `node:test` + jsdom, plus real-transform and tree-shake guards. |
 | `demo/` | Vite app exercising the runtime; also `src/typecheck/*.tsx` smoke files. |
 | `docs/` | User guides (repo-only, not published to npm). |
@@ -104,11 +105,12 @@ case, it belongs in an opt-in entry — or not at all.
 ## Docs and skills
 
 - `docs/` are user-facing guides; keep them in step with the API.
-- `skills/bsig/SKILL.md` and `skills/router/SKILL.md` are how coding agents
-  learn the library — update them whenever the public API changes.
-- Install with `bsig-skill [bsig|router]` (or `bsig-router-skill`); installs land
-  in `.agents/skills/<skill>/` and the `--opencode`/`--claude`/`--global`/
-  `--dest` variants.
+- `skills/bsig/SKILL.md`, `skills/router/SKILL.md`, and
+  `skills/auth/SKILL.md` are how coding agents learn the library — update them
+  whenever the public API changes.
+- Install with `bsig-skill [bsig|router|auth]` (or `bsig-router-skill`,
+  `bsig-auth-skill`); installs land in `.agents/skills/<skill>/` and the
+  `--opencode`/`--claude`/`--global`/`--dest` variants.
 
 ## Release process
 

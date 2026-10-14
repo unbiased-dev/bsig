@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /* Install a bsig agent skill into the current project (or global config).
  *
- *   npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill           # bsig skill
- *   npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill router    # router skill
- *   npx -p github:unbiased-dev/bsig#v0.5.0 bsig-router-skill    # router skill
- *   npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill router --opencode
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill           # bsig skill
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill router    # router skill
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill auth      # auth skill
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-router-skill    # router skill
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-auth-skill      # auth skill
+ *   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill router --opencode
  *
  * Resolves the skill relative to this file (never cwd), so it works from an
  * npx/bunx cache as well as from node_modules/bsig.
@@ -15,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SKILLS = ['bsig', 'router'];
+const SKILLS = ['bsig', 'router', 'auth'];
 
 const out = (s) => process.stdout.write(s + '\n');
 const fail = (s) => {
@@ -37,7 +39,7 @@ if (args[0] && SKILLS.includes(args[0])) {
 if (args.includes('--help') || args.includes('-h')) {
   out('usage: bsig-skill [skill] [--opencode | --claude | --global] [--dest <dir>]');
   out('');
-  out('  skill      bsig (default) | router');
+  out('  skill      bsig (default) | router | auth');
   out('  (default)  .agents/skills/<skill>/   project skill (OpenCode + Claude + others)');
   out('  --opencode .opencode/skills/<skill>/  OpenCode project skill');
   out('  --claude   .claude/skills/<skill>/    Claude Code project skill');

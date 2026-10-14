@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.5.0
+npm install github:unbiased-dev/bsig#v0.6.0
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.5.0
+npm install github:unbiased-dev/bsig#v0.6.0
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -144,9 +144,31 @@ mount(document.getElementById('app')!, () => <Router routes={routes} />);
 Full guide: [`docs/router.md`](docs/router.md). Requires the Navigation API
 (Chromium); it degrades to full navigations elsewhere.
 
+## Auth (optional)
+
+`bsig/auth` is a separate, tree-shakeable entry — a tiny, zero-dependency client
+for a [better-auth](https://www.better-auth.com/) server (sessions, email
+sign-in/up/out, and refresh triggers), held in bsig signals. A build that never
+imports it leaves it out of the bundle:
+
+```ts
+import { initAuth, session, signInEmail, startSessionRefresh } from 'bsig/auth';
+
+initAuth(); // baseURL defaults to window.location.origin
+startSessionRefresh(); // focus / online / cross-tab / polling
+
+await signInEmail({ email, password });
+console.log(session.value?.user.name);
+```
+
+It speaks the better-auth endpoints over plain `fetch`, so there is no
+better-auth dependency to install — the session/user types are generic, and you
+register your own by declaration merging. It replaces `better-auth/client` for
+apps that only need the session flow. Full guide: [`docs/auth.md`](docs/auth.md).
+
 ## Agent skills (bsig for AI assistants)
 
-Two skills ship in the package, installed with one command each (replace
+Three skills ship in the package, installed with one command each (replace
 `v0.5.0` with the newest tag):
 
 - `skills/bsig/SKILL.md` — the full bsig API: signals, effects,
@@ -154,11 +176,16 @@ Two skills ship in the package, installed with one command each (replace
   that don't apply.
 - `skills/router/SKILL.md` — the `bsig/router` API and gotchas (parent
   preservation, parallel guards, matching rules).
+- `skills/auth/SKILL.md` — the `bsig/auth` client and gotchas (401 vs other
+  errors, cookie rotation, refresh triggers, type extension).
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill          # bsig skill
-npx -p github:unbiased-dev/bsig#v0.5.0 bsig-skill router   # router skill
-# or, for the router skill: npx -p github:unbiased-dev/bsig#v0.5.0 bsig-router-skill
+npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill          # bsig skill
+npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill router   # router skill
+npx -p github:unbiased-dev/bsig#v0.6.0 bsig-skill auth     # auth skill
+# or, for the router/auth skill:
+#   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-router-skill
+#   npx -p github:unbiased-dev/bsig#v0.6.0 bsig-auth-skill
 ```
 
 Default target is `.agents/skills/<skill>/` (discovered by OpenCode, Claude

@@ -1,11 +1,12 @@
 {
   "name": "bsig",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
   "bin": {
     "bsig-skill": "./skills/install.mjs",
-    "bsig-router-skill": "./skills/install-router.mjs"
+    "bsig-router-skill": "./skills/install-router.mjs",
+    "bsig-auth-skill": "./skills/install-auth.mjs"
   },
   "main": "./runtime.js",
   "types": "./runtime.d.ts",
@@ -40,6 +41,11 @@
       "import": "./router.js",
       "default": "./router.js"
     },
+    "./auth": {
+      "types": "./auth.d.ts",
+      "import": "./auth.js",
+      "default": "./auth.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -47,6 +53,8 @@
     "runtime.d.ts",
     "router.js",
     "router.d.ts",
+    "auth.js",
+    "auth.d.ts",
     "jsx-runtime.js",
     "jsx-runtime.d.ts",
     "plugin/",
