@@ -2,6 +2,8 @@
 
 Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.
 
+Based on [Sigwork](https://github.com/thatjustworks/sigwork) — same engine and philosophy, with a friendlier authoring experience: no manual `() =>` wrappers in JSX, React-style `props.children`, and an optional [`<Show>`](https://framework.thatjust.works/docs) over callback-style `If()`.
+
 Write plain JSX — `{name.value}`, `disabled={off.value}`, `{show.value && <span/>}` — and the Vite plugin turns dynamic expressions into lazy bindings. Components run once; only the DOM nodes that read a changed signal update.
 
 ## Install
