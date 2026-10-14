@@ -116,6 +116,7 @@ case, it belongs in an opt-in entry — or not at all.
 
 bsig is installed straight from GitHub by tag
 (`npm install github:unbiased-dev/bsig#vX.Y.Z`), so **the tag is the release**.
+Release notes are kept in the repo in [`CHANGELOG.md`](CHANGELOG.md).
 
 1. Make sure `main` is green:
    ```sh
@@ -128,27 +129,30 @@ bsig is installed straight from GitHub by tag
    ```sh
    grep -rn "#v0\." README.md docs skills
    ```
-4. Commit using the repo convention: `vX.Y.Z: <what changed>` (one line; add a
+4. Add the version's notes to `CHANGELOG.md` (newest first). Keep them the same
+   highlights you will publish on GitHub.
+5. Commit using the repo convention: `vX.Y.Z: <what changed>` (one line; add a
    short body when useful).
-5. Tag and push:
+6. Tag and push:
    ```sh
    git tag -a vX.Y.Z -m "vX.Y.Z: <what changed>"
    git push origin main
    git push origin vX.Y.Z        # retry once if the tag push fails transiently
    ```
-6. Publish the GitHub release:
+7. Publish the GitHub release (use the changelog entry as the notes):
    ```sh
    gh release create vX.Y.Z --title "vX.Y.Z — <title>" --notes "<highlights>"
    ```
-7. Verify the tag installs:
+8. Verify the tag installs:
    ```sh
    npm install github:unbiased-dev/bsig#vX.Y.Z
    # or: npx -p github:unbiased-dev/bsig#vX.Y.Z bsig-skill
    ```
 
 Versioning is semver-ish: **minor** for new capability, **patch** for fixes.
-Docs-only changes (this file, `docs/`, README prose) can be committed to `main`
-without a tag, since they are not part of the published package.
+Docs-only changes (this file, `docs/`, README prose, `CHANGELOG.md`) can be
+committed to `main` without a tag, since they are not part of the published
+package.
 
 ## Definition of done
 
@@ -157,5 +161,7 @@ without a tag, since they are not part of the published package.
 - [ ] Runtime stayed tiny; new surface is opt-in and tree-shakeable.
 - [ ] `.d.ts` types updated and accurate (no dependency on a too-new TS DOM lib).
 - [ ] README/docs/skills updated.
+- [ ] `CHANGELOG.md` has an entry for the version (same highlights as the
+      GitHub release).
 - [ ] If the published package changed: version bumped, tagged, released, and
       the tag verified to install.

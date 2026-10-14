@@ -61,6 +61,17 @@ return (
 `refreshSession()` re-reads the session cookie and updates the store. It returns
 a promise; concurrent calls are collapsed into a single in-flight request.
 
+`loadSession()` is the boot / route-guard path: it reads the session **once**
+and resolves immediately thereafter, so guards that await it on every navigation
+do not re-hit the network. It is `refreshSession()` memoized against the first
+settle — use `refreshSession()` when you actually want a fresh request:
+
+```ts
+import { loadSession } from 'bsig/auth';
+
+await loadSession(); // first call: one request; later calls: resolved instantly
+```
+
 ## 3. Sign in, sign up, sign out
 
 ```ts
@@ -70,13 +81,17 @@ const { error } = await signInEmail({ email, password });
 if (error) showError(error.message);
 
 await signUpEmail({ name, email, password });
-await signOut(); // clears `session` immediately
+
+const out = await signOut();
+if (out.error) showError(out.error.message); // session kept; try again
 ```
 
-Each returns `{ error: AuthError | null }` (sign-out resolves `void`). On
-success, sign-in/up broadcast to other tabs and then refresh the session; on
-failure the error is returned as-is (`{ message, code, status }`) and nothing is
-refetched.
+Each returns `{ error: AuthError | null }`. On success, sign-in/up broadcast to
+other tabs and then refresh the session. **`signOut()` clears `session` (and
+broadcasts) only once the server confirms** — a failed request (network, or a
+CSRF `403` like `MISSING_OR_NULL_ORIGIN`) leaves the server session and cookie
+intact, so clearing locally would just be resurrected by the next refetch.
+On failure the session is kept and the error returned.
 
 ## 4. Passive refresh
 

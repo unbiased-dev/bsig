@@ -202,12 +202,68 @@ describe('auth: sign in / up / out', () => {
     assert.equal(auth.session.value, null);
   });
 
-  it('signOut clears the store', async () => {
+  it('signOut clears the store and broadcasts on success', async () => {
     stubFetch(() => json(sampleSession));
     await auth.refreshSession();
-    stubFetch(() => json({ success: true }));
-    await auth.signOut();
+    const calls = stubFetch(() => json({ success: true }));
+    const { error } = await auth.signOut();
+    assert.equal(error, null);
+    assert.equal(calls[0].path, '/sign-out');
     assert.equal(auth.session.value, null);
+    const written = JSON.parse(globalThis.localStorage.getItem(BROADCAST_KEY));
+    assert.equal(written.data.trigger, 'signout');
+  });
+
+  it('signOut keeps the session and does not broadcast when the request fails', async () => {
+    stubFetch(() => json(sampleSession));
+    await auth.refreshSession();
+    stubFetch(() => json({ message: 'missing origin', code: 'MISSING_OR_NULL_ORIGIN' }, 403));
+    const { error } = await auth.signOut();
+    assert.equal(error.code, 'MISSING_OR_NULL_ORIGIN');
+    assert.ok(auth.session.value, 'session survives a failed sign-out');
+    assert.equal(globalThis.localStorage.getItem(BROADCAST_KEY), null, 'no broadcast on failure');
+  });
+});
+
+describe('auth: loadSession', () => {
+  it('fetches once, then resolves without touching the network', async () => {
+    const calls = stubFetch(() => json(sampleSession));
+    await auth.loadSession();
+    assert.equal(calls.length, 1);
+    assert.equal(auth.session.value.user.id, 'u1');
+    await auth.loadSession();
+    await auth.loadSession();
+    assert.equal(calls.length, 1, 'later loadSession calls are no-ops');
+  });
+
+  it('collapses concurrent initial loads into one request', async () => {
+    const calls = stubFetch(() => json(sampleSession));
+    await Promise.all([auth.loadSession(), auth.loadSession(), auth.loadSession()]);
+    assert.equal(calls.length, 1);
+  });
+
+  it('does not refetch after an explicit refreshSession', async () => {
+    const calls = stubFetch(() => json(sampleSession));
+    await auth.refreshSession();
+    assert.equal(calls.length, 1);
+    await auth.loadSession();
+    assert.equal(calls.length, 1, 'loadSession is a no-op once loaded');
+  });
+
+  it('stays memoized after a failed load; refreshSession is the retry', async () => {
+    let attempt = 0;
+    const calls = stubFetch(() => {
+      attempt += 1;
+      return attempt === 1 ? json({ message: 'boom' }, 500) : json(sampleSession);
+    });
+    await auth.loadSession();
+    assert.equal(calls.length, 1);
+    assert.equal(auth.session.value, null);
+    await auth.loadSession();
+    assert.equal(calls.length, 1, 'loadSession does not retry after the first attempt');
+    await auth.refreshSession();
+    assert.equal(calls.length, 2);
+    assert.equal(auth.session.value.user.id, 'u1');
   });
 });
 

@@ -143,6 +143,12 @@ export function authFetch<T = unknown>(
 export function refreshSession(): Promise<void>;
 
 /**
+ * Ensure the session is read once (boot / route guards). No-op once the first
+ * request has settled; use `refreshSession()` to force a refetch.
+ */
+export function loadSession(): Promise<void>;
+
+/**
  * Wire the passive refetch triggers (focus, online, cross-tab, polling).
  * Returns cleanup.
  */
@@ -159,4 +165,8 @@ export interface SignUpInput extends Credentials {
 
 export function signInEmail(input: Credentials): Promise<{ error: AuthError | null }>;
 export function signUpEmail(input: SignUpInput): Promise<{ error: AuthError | null }>;
-export function signOut(): Promise<void>;
+/**
+ * POST /sign-out. Clears the store and broadcasts only when the server
+ * confirms; on failure the session is kept and the error returned.
+ */
+export function signOut(): Promise<{ error: AuthError | null }>;

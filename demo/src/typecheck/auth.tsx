@@ -3,6 +3,7 @@ import {
   authFetch,
   initAuth,
   isPending,
+  loadSession,
   refreshSession,
   session,
   sessionError,
@@ -72,7 +73,7 @@ export const authSmoke = {
   signUpInput,
 };
 
-export const authActions = { refreshSession, signInEmail, signUpEmail, signOut, authFetch };
+export const authActions = { loadSession, refreshSession, signInEmail, signUpEmail, signOut, authFetch };
 
 // A signal-driven view, to keep the JSX/react pipeline honest.
 const signedIn = signal(true);

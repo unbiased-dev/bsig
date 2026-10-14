@@ -169,7 +169,7 @@ apps that only need the session flow. Full guide: [`docs/auth.md`](docs/auth.md)
 ## Agent skills (bsig for AI assistants)
 
 Three skills ship in the package, installed with one command each (replace
-`v0.5.0` with the newest tag):
+`v0.6.1` with the newest tag):
 
 - `skills/bsig/SKILL.md` — the full bsig API: signals, effects,
   `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the React habits
@@ -202,6 +202,7 @@ The runtime is a few kilobytes of signals + effects + direct-DOM patching (keyed
 
 Contributor and agent guidance — the project's scope, architecture, library
 conventions, and the release process — lives in [`AGENTS.md`](AGENTS.md).
+Release notes for every tagged version are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

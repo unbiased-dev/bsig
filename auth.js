@@ -175,6 +175,17 @@ export function refreshSession() {
   return fetchSession();
 }
 
+/**
+ * Ensure the session has been read once — the boot and route-guard path.
+ * Resolves immediately once the first request has settled, so guards that await
+ * it on every navigation do not re-hit the network. (`isPending` is exactly
+ * "the first request has not settled yet".) Use `refreshSession()` to force an
+ * actual refetch.
+ */
+export function loadSession() {
+  return isPending.value ? fetchSession() : Promise.resolve();
+}
+
 function broadcast(trigger) {
   try {
     localStorage.setItem(
@@ -283,7 +294,12 @@ export async function signUpEmail(input) {
 }
 
 export async function signOut() {
-  await post('/sign-out');
+  const { error } = await post('/sign-out');
+  // Only clear when the server confirms. A failed request (network, or a CSRF
+  // 403 like MISSING_OR_NULL_ORIGIN) leaves the server session and cookie
+  // intact, so clearing locally would just be resurrected by the next refetch.
+  if (error) return { error };
   session.value = null;
   broadcast('signout');
+  return { error: null };
 }
