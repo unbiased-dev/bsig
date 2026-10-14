@@ -1,8 +1,11 @@
 {
   "name": "bsig",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "type": "module",
+  "bin": {
+    "bsig-skill": "./skills/install.mjs"
+  },
   "main": "./runtime.js",
   "types": "./runtime.d.ts",
   "exports": {

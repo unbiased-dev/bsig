@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.3.3
+npm install github:unbiased-dev/bsig#v0.3.4
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.3.3
+npm install github:unbiased-dev/bsig#v0.3.4
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -102,20 +102,19 @@ Full reference with live examples: run the demo (`demo/`) and open `/docs/`.
 
 `skills/bsig/SKILL.md` teaches coding agents the full bsig API — signals,
 effects, `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the
-React habits that don't apply. Install it wherever your agent looks for
-skills (replace `v0.3.3` with the newest tag):
+React habits that don't apply. One command drops it into the current project
+(replace `v0.3.4` with the newest tag):
 
 ```sh
-# OpenCode (global)
-git clone --depth 1 --branch v0.3.3 https://github.com/unbiased-dev/bsig.git /tmp/bsig-skill
-mkdir -p ~/.config/opencode/skills/bsig
-cp -r /tmp/bsig-skill/skills/bsig/* ~/.config/opencode/skills/bsig/
-
-# same SKILL.md format also works for:
-#   Claude Code  → ~/.claude/skills/bsig/
-#   other agents → ~/.agents/skills/
-#   this project → .opencode/skills/bsig/ (copy the folder into the repo)
+npx -p github:unbiased-dev/bsig#v0.3.4 bsig-skill
+# or: bunx --package github:unbiased-dev/bsig#v0.3.4 bsig-skill
 ```
+
+Default target is `.agents/skills/bsig/` (discovered by OpenCode, Claude
+Code, and other agents). Variants: `--opencode` (`.opencode/skills/`),
+`--claude` (`.claude/skills/`), `--global` (`~/.config/opencode/skills/`),
+`--dest <dir>`, `--help`. Manual fallback is a plain copy of
+`skills/bsig/SKILL.md` from the repo.
 
 ## How it stays tiny
 
