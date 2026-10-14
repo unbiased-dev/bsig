@@ -171,6 +171,11 @@ from the repo.
 
 The runtime is a few kilobytes of signals + effects + direct-DOM patching (keyed lists via LIS reconciliation). The compiler (build-time only) auto-wraps dynamic JSX children/props into thunks and skips `on*` handlers, `ref`, statics, and `For`/`If` calls (those already return stable thunks). See `plugin/bsig-jsx.js`; override the runtime path with `bsig({ runtime: './path/to/runtime.js' })` if needed.
 
+## Working on bsig
+
+Contributor and agent guidance — the project's scope, architecture, library
+conventions, and the release process — lives in [`AGENTS.md`](AGENTS.md).
+
 ## License
 
 MIT — see LICENSE.
