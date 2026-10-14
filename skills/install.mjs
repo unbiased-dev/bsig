@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /* Install the bsig agent skill into the current project (or global config).
  *
- *   npx -p github:unbiased-dev/bsig#v0.3.4 bsig-skill
- *   npx -p github:unbiased-dev/bsig#v0.3.4 bsig-skill --opencode
- *   npx -p github:unbiased-dev/bsig#v0.3.4 bsig-skill --global
- *   bunx --package github:unbiased-dev/bsig#v0.3.4 bsig-skill
+ *   npx -p github:unbiased-dev/bsig#v0.4.0 bsig-skill
+ *   npx -p github:unbiased-dev/bsig#v0.4.0 bsig-skill --opencode
+ *   npx -p github:unbiased-dev/bsig#v0.4.0 bsig-skill --global
+ *   bunx --package github:unbiased-dev/bsig#v0.4.0 bsig-skill
  *
  * Resolves SKILL.md relative to this file (never cwd), so it works from an
  * npx/bunx cache as well as from node_modules/bsig.

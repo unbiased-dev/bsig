@@ -26,23 +26,59 @@ const tick = () => {
 let activeEffect = null;
 export const effect = (fn, is_scope = false) => {
   let cleanup = null;
+  let stopped = false;
+  // Drop this run's subscriptions and children. Used both before a re-run
+  // (keeping the effect registered with its scope) and on final stop.
+  const teardown = () => {
+    run.e.forEach((subs) => subs.delete(run));
+    run.e.clear();
+    isFn(cleanup) && cleanup();
+    if (run.k) {
+      run.k.slice().forEach((f) => f());
+      run.k.length = 0;
+    }
+  };
   const run = () => {
-    stop();
+    // A queued re-run can fire after an explicit stop; don't revive the effect.
+    if (stopped) return;
+    teardown();
     const prev = activeEffect;
     activeEffect = run;
     cleanup = fn();
     activeEffect = prev;
   };
   const stop = () => {
-    run.e.forEach((subs) => subs.delete(run));
-    run.e.clear();
-    isFn(cleanup) && cleanup();
-    run.c?.forEach((f) => f());
+    if (stopped) return;
+    stopped = true;
+    teardown();
+    // Drop ourselves from the owner's list so a long-lived scope does not
+    // retain stops for nodes that were explicitly removed (e.g. a page
+    // swapped out on every navigation).
+    if (run.o) {
+      const i = run.o.indexOf(stop);
+      if (i !== -1) run.o.splice(i, 1);
+      run.o = null;
+    }
   };
   run.e = new Set();
   is_scope && (run.c = []);
+  // The creation parent is fixed: dependents created during a *re-run* still
+  // belong to the same scope (the enclosing effect may be null while the
+  // scheduler flushes a queued re-run).
+  run.p = activeEffect;
   run();
-  activeEffect?.c?.push(stop);
+  // Register this effect's cleanup with the nearest enclosing *scope*. Scopes
+  // don't track reads (see `track`), so a component created inside a
+  // dynamic-child boundary — whose parent effect is a non-scope — would
+  // otherwise be orphaned when an ancestor unmounts. Walking up to the scope
+  // keeps those subtrees in the cleanup cascade. `stop` is idempotent so an
+  // explicitly removed node is not torn down twice.
+  let owner = run.p;
+  while (owner && !owner.c) owner = owner.p;
+  if (owner) {
+    (owner.k ??= []).push(stop);
+    run.o = owner.k;
+  }
   return stop;
 };
 export const scope = (f) => effect(f, true);
@@ -157,20 +193,28 @@ export const h = (tag, props, ...children) => {
   if (isFn(tag)) {
     const prev = context;
     context = { m: [], u: [], p: { ...(prev?.p || {}) } };
+    // Capture this component's own context: cleanup must run *its* onUnmount
+    // hooks even when the return value is an array (a provider-shaped
+    // component) and nothing gets stamped with `$c`.
+    const ctx = context;
     let el;
     // Single-arg components: tag(props). No legacy (props, {children, emit}).
     // Child calls parent callbacks directly via props.onX.
     const stop = effect(() => {
       el = tag(props);
-      return () => el?.$c?.u.forEach((fn) => fn());
+      return () => ctx.u.forEach((fn) => fn());
     }, true);
     if (isNode(el) || isFn(el)) {
-      el.$c = context;
+      el.$c = ctx;
       el.$s = stop;
-      if (!context.q) {
-        context.q = true;
+      if (!ctx.q) {
+        ctx.q = true;
         pendingHooks++;
       }
+    } else if (Array.isArray(el)) {
+      // Array returns (provider components that can't let the outer `h()`
+      // stamp their child node) still need a reachable stop function.
+      el.$s = stop;
     }
     context = prev;
     return el;
@@ -214,6 +258,16 @@ const fireMounts = (node, force) => {
 
 const append = (parent, child) => {
   if (child === null || child === undefined || child === false) return null;
+  if (Array.isArray(child)) {
+    // A component may return an array (e.g. a provider that must not be
+    // stamped by the outer `h()`); treat it as a list of children.
+    const stops = [];
+    child.forEach((c) => {
+      const s = append(parent, c);
+      if (s) stops.push(s);
+    });
+    return stops.length ? () => stops.forEach((s) => s()) : null;
+  }
   if (isFn(child)) {
     const anchor = document.createTextNode('');
     parent.appendChild(anchor);
@@ -398,12 +452,14 @@ export const Transition = (props) => {
 
 export default (target, root, props) => {
   const el = h(root, props);
-  if (isFn(el)) {
-    // fragment root reuses the dynamic append path; unmount stops the
-    // anchor scope once then removes top-level nodes (runs $s/onUnmount/$l).
+  if (isFn(el) || Array.isArray(el)) {
+    // fragment/array root reuses the dynamic append path; unmount stops the
+    // root component's scope, the anchor scope, then removes top-level nodes
+    // (running $s/onUnmount/$l).
     const stop = append(target, el);
     fireMounts(target, true);
     return () => {
+      el.$s?.();
       stop?.();
       [...target.childNodes].forEach((n) => remove(n, false));
     };

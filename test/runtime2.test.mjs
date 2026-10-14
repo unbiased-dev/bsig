@@ -62,6 +62,77 @@ describe('lifecycle', () => {
     assert.equal(runs, frozen);
     target.remove();
   });
+  it('unmount stops components created inside a dynamic child', async () => {
+    // A component instantiated by a dynamic-child thunk used to be orphaned
+    // from ancestor cleanup: only scope effects recorded children, and the
+    // append boundary is a non-scope effect. Its subscriptions then leaked.
+    const events = [];
+    let childRuns = 0;
+    const s = signal(0);
+    const Child = () => {
+      const el = h('p', null, () => (childRuns++, String(s.value)));
+      onUnmount(() => events.push('child'));
+      return el;
+    };
+    const App = () => h('div', null, () => h(Child, null));
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, App);
+    await flush();
+    assert.deepEqual(events, []);
+    const before = childRuns;
+    s.value = 1;
+    await flush();
+    assert.ok(childRuns > before, 'child effect tracked the signal');
+    unmount();
+    assert.deepEqual(events, ['child']);
+    const frozen = childRuns;
+    s.value = 2;
+    await flush();
+    assert.equal(childRuns, frozen, 'no updates leak after unmount');
+    target.remove();
+  });
+
+  it('an array-returning component keeps its node lifecycle', async () => {
+    // Provider-shaped components return an array so the outer `h()` cannot
+    // stamp over the child's context; the child's hooks must still run.
+    const events = [];
+    const Page = () => {
+      onMount(() => events.push('mount'));
+      onUnmount(() => events.push('unmount'));
+      return h('p', null, 'page');
+    };
+    const Provider = () => [h(Page, null)];
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h(Provider, null));
+    await flush();
+    assert.deepEqual(events, ['mount']);
+    assert.equal(target.textContent, 'page');
+    unmount();
+    assert.deepEqual(events, ['mount', 'unmount']);
+    target.remove();
+  });
+
+  it('does not double-run cleanup for an explicitly removed child', async () => {
+    const events = [];
+    const show = signal(true);
+    const Child = () => {
+      onUnmount(() => events.push('child'));
+      return h('i', null, 'c');
+    };
+    const App = () => h('div', null, h(Show, { when: () => show.value }, h(Child, null)));
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, App);
+    await flush();
+    show.value = false;
+    await flush();
+    assert.deepEqual(events, ['child']);
+    unmount();
+    assert.deepEqual(events, ['child'], 'ancestor unmount must not re-run it');
+    target.remove();
+  });
 });
 
 describe('context', () => {

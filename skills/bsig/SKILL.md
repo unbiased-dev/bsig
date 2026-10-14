@@ -1,6 +1,6 @@
 ---
 name: bsig
-description: Build reactive UIs with bsig — signal-based JSX with no VDOM and no re-renders. Use for any task that imports from 'bsig', edits .tsx under jsxImportSource bsig, or configures bsig/plugin.
+description: Build reactive UIs with bsig — signal-based JSX with no VDOM and no re-renders. Use for any task that imports from 'bsig' or 'bsig/router', edits .tsx under jsxImportSource bsig, or configures bsig/plugin.
 ---
 
 # bsig
@@ -33,7 +33,7 @@ signal update.
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.3.6
+npm install github:unbiased-dev/bsig#v0.4.0
 ```
 
 ## Bun alternative
@@ -411,3 +411,46 @@ export function Pair() {
   );
 }
 ```
+
+## Router (`bsig/router`)
+
+Optional, tree-shakeable entry — never part of the runtime bundle unless
+imported. Built on the Navigation API (Chromium; degrades to full navigations
+elsewhere). See `docs/router.md`.
+
+```tsx
+import { Router, Outlet, Link } from 'bsig/router';
+
+const Layout = () => (
+  <div>
+    <Link to="/users/1">user</Link>
+    <Outlet />
+  </div>
+);
+
+const routes = {
+  path: '/',
+  component: Layout,
+  children: [
+    { path: '/', component: () => <h1>Home</h1> },
+    { path: '/users/:id', component: ({ params }) => <p>{params.id}</p> },
+  ],
+};
+
+mount(document.getElementById('app')!, () => <Router routes={routes} />);
+```
+
+- `Route` is `{ path, component, children?, beforeEnter? }`; the root's
+  `component` is the layout. Routed components get `{ params, route }`.
+- `beforeEnter({ to, from })` returns `true`/`undefined` (allow), `false`
+  (block), or a path / `{ path, replace? }` (redirect); may be async.
+- `lazy(() => import('./Page'), loading?)` renders the fallback until the
+  module's `default` resolves, and exposes `.preload()`.
+- `createRouter({ routes, notFound?, beforeEnter? })` gives you `navigate`,
+  `prefetch`, `isActive`, and `pathname`. `matchTree()` matches without
+  rendering.
+- `<Link>` sets `aria-current="page"` when active and prefetches on
+  hover/focus.
+- This is NOT React Router: no loaders, no `useParams`, no nested `<Route>`
+  JSX. Routes are plain objects, params come through props, and layouts render
+  `<Outlet/>`.

@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.3.6
+npm install github:unbiased-dev/bsig#v0.4.0
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.3.6
+npm install github:unbiased-dev/bsig#v0.4.0
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -111,16 +111,49 @@ plugins = ["bsig/bun-plugin"]
 plus `"jsx": "react-jsx", "jsxImportSource": "bsig"` in `tsconfig.json`.
 Full walkthrough (server + HTML route + app): [`docs/bun.md`](docs/bun.md).
 
+## Router (optional)
+
+`bsig/router` is a separate, tree-shakeable entry — a build that never imports
+it leaves it (and its vendored matcher) out of the bundle. Nested
+layouts, params, async guards, lazy pages, and scroll restoration, built on the
+Navigation API:
+
+```tsx
+import mount from 'bsig';
+import { Router, Outlet, Link } from 'bsig/router';
+
+const Layout = () => (
+  <div>
+    <Link to="/users/1">user</Link>
+    <Outlet />
+  </div>
+);
+
+const routes = {
+  path: '/',
+  component: Layout,
+  children: [
+    { path: '/', component: () => <h1>Home</h1> },
+    { path: '/users/:id', component: ({ params }) => <p>{params.id}</p> },
+  ],
+};
+
+mount(document.getElementById('app')!, () => <Router routes={routes} />);
+```
+
+Full guide: [`docs/router.md`](docs/router.md). Requires the Navigation API
+(Chromium); it degrades to full navigations elsewhere.
+
 ## Agent skill (bsig for AI assistants)
 
 `skills/bsig/SKILL.md` teaches coding agents the full bsig API — signals,
 effects, `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the
 React habits that don't apply. One command drops it into the current project
-(replace `v0.3.4` with the newest tag):
+(replace `v0.4.0` with the newest tag):
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.3.6 bsig-skill
-# or: bunx --package github:unbiased-dev/bsig#v0.3.6 bsig-skill
+npx -p github:unbiased-dev/bsig#v0.4.0 bsig-skill
+# or: bunx --package github:unbiased-dev/bsig#v0.4.0 bsig-skill
 ```
 
 Default target is `.agents/skills/bsig/` (discovered by OpenCode, Claude
