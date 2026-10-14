@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bsig — Documentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+    @media (max-width: 639px) {
+      .bg-stone-900 pre { font-size: 0.7rem; line-height: 1.6; }
+    }
+    p.font-mono { overflow-x: auto; white-space: nowrap; padding-bottom: 2px; max-width: 100%; display: block; }
+    .nav-link.active { background-color: rgb(231 229 228 / 0.5); color: rgb(194 65 12); }
+  </style>
+</head>
+<body class="bg-stone-100 text-stone-800 font-sans selection:bg-orange-200 selection:text-stone-900 flex flex-col md:flex-row min-h-screen">
+  <aside class="w-full md:w-72 md:sticky top-0 md:h-screen border-b md:border-b-0 md:border-r border-stone-200/80 bg-stone-100/80 backdrop-blur-md p-5 md:p-8 flex flex-col z-50 overflow-y-auto shrink-0">
+    <div class="mb-10">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-stone-200 bg-stone-50 text-xs font-semibold tracking-widest text-orange-700 uppercase mb-4 shadow-sm">
+        <span class="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse"></span> bsig demo
+      </div>
+      <h1 class="font-serif text-4xl font-bold tracking-tighter text-stone-900">bsig.</h1>
+      <p class="text-sm text-stone-500 font-light mt-1">React-like JSX. Fine-grained. No VDOM.</p>
+      <p class="mt-3"><a href="/" class="text-sm text-orange-700 underline underline-offset-2">← back to demo</a></p>
+    </div>
+    <nav class="flex flex-col gap-0.5 flex-1 text-[0.875rem]" id="nav">
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-2">Foundation</p>
+      <a href="#intro" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Introduction</a>
+      <a href="#setup" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Installation &amp; Setup</a>
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-5">Reactive Core</p>
+      <a href="#signal" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">signal()</a>
+      <a href="#reactive" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">reactive()</a>
+      <a href="#computed" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">computed()</a>
+      <a href="#scope" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">scope()</a>
+      <a href="#effect" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">effect()</a>
+      <a href="#watch" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">watch()</a>
+      <a href="#untrack" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">untrack()</a>
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-5">Rendering</p>
+      <a href="#h" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">h() &amp; JSX</a>
+      <a href="#props" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Props &amp; Events</a>
+      <a href="#dynamic" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Dynamic Children</a>
+      <a href="#ref" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">ref</a>
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-5">Components</p>
+      <a href="#components" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Creating Components</a>
+      <a href="#children" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">children</a>
+      <a href="#lifecycle" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">onMount / onUnmount</a>
+      <a href="#provide" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">provide / inject</a>
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-5">Built-ins</p>
+      <a href="#show" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">&lt;Show&gt;</a>
+      <a href="#if" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">If()</a>
+      <a href="#for" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">For()</a>
+      <a href="#transition" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">&lt;Transition&gt;</a>
+      <a href="#component" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">&lt;Component&gt;</a>
+      <p class="text-xs font-bold tracking-widest text-stone-400 uppercase mb-2 mt-5">Application</p>
+      <a href="#app" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">App Mounting</a>
+      <a href="#plugin" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Vite Plugin</a>
+      <a href="#types" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">TypeScript &amp; Tests</a>
+      <a href="#limitations" class="nav-link px-4 py-1.5 -mx-4 rounded-xl text-stone-600 hover:bg-stone-200/50 hover:text-orange-700 transition-all font-medium">Known Limitations</a>
+    </nav>
+  </aside>
+
+  <main class="flex-1 w-full max-w-4xl mx-auto p-8 md:p-16 lg:p-24 overflow-x-hidden">
+    <header class="border-b border-stone-300 pb-16 mb-16">
+      <h2 class="font-serif text-5xl md:text-7xl tracking-tighter text-stone-900 mb-6 drop-shadow-sm">Reference Manual</h2>
+      <p class="text-xl md:text-2xl text-stone-500 font-light leading-relaxed max-w-2xl">React-like JSX, fine-grained signals, no Virtual DOM. Write plain <code class="font-mono text-lg text-orange-800">{'{value}'}</code> — the compiler makes it reactive.</p>
+    </header>
+    <div class="flex flex-col gap-20">
+
+      <section id="intro" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Introduction</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-4">bsig is a Sigwork fork with one rule change: <strong>you never write <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">() =&gt;</code> in JSX</strong>. The Vite plugin wraps dynamic children and props into lazy getters at build time, so the runtime keeps its tiny fine-grained engine — signals connect directly to the DOM node or attribute that reads them.</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-4">Components are plain functions of <strong>one argument</strong> (<code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">props</code>, with <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">props.children</code>). They run <strong>once</strong>. Nothing re-renders — only the anchor that depends on a changed signal updates.</p>
+        <div class="mt-8 grid grid-cols-3 gap-2 md:gap-4 text-center">
+          <div class="bg-stone-50 border border-stone-200 rounded-2xl p-3 md:p-6"><p class="font-serif text-xl md:text-3xl text-stone-900 font-bold">~3k</p><p class="text-xs md:text-sm text-stone-500 mt-1">runtime gzip</p></div>
+          <div class="bg-stone-50 border border-stone-200 rounded-2xl p-3 md:p-6"><p class="font-serif text-xl md:text-3xl text-stone-900 font-bold">0</p><p class="text-xs md:text-sm text-stone-500 mt-1">VDOM</p></div>
+          <div class="bg-stone-50 border border-stone-200 rounded-2xl p-3 md:p-6"><p class="font-serif text-xl md:text-3xl text-stone-900 font-bold">JSX</p><p class="text-xs md:text-sm text-stone-500 mt-1">React-like</p></div>
+        </div>
+        <div class="mt-6 bg-orange-50 border border-orange-200 rounded-2xl p-6"><p class="text-sm text-stone-700 leading-relaxed"><strong>Porting from Sigwork:</strong> drop <code class="font-mono">() =&gt;</code> wrappers in JSX, move <code class="font-mono">children</code> to <code class="font-mono">props.children</code>, call <code class="font-mono">props.onX()</code> directly instead of <code class="font-mono">emit()</code>, prefer <code class="font-mono">&lt;Show&gt;</code> over <code class="font-mono">If()</code> in JSX.</p></div>
+      </section>
+
+      <section id="setup" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Installation &amp; Setup</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Vite is required — the compiler is what removes the manual thunks. There is no buildless/CDN mode.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800 mb-6"><div class="text-stone-500 text-xs mb-3 uppercase tracking-widest">terminal</div><pre class="text-stone-300 leading-loose">npm install
+npm run dev     # demo at /
+npm run build   # production bundle
+npm test        # 9 runtime tests (node:test + jsdom)
+npm run typecheck</pre></div>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800 mb-6"><div class="text-stone-500 text-xs mb-3 uppercase tracking-widest">vite.config.js</div><pre class="text-stone-300 leading-loose">import bsig from 'bsig/plugin';
+export default {
+  plugins: [bsig()],
+};</pre></div>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><div class="text-stone-500 text-xs mb-3 uppercase tracking-widest">src/main.jsx</div><pre class="text-stone-300 leading-loose">import mount from 'bsig';
+import App from './App.jsx';
+mount(document.getElementById('app'), App);</pre></div>
+      </section>
+
+      <section id="signal" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">signal()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">signal&lt;T&gt;(value: T) → Signal&lt;T&gt; ({ value: T })</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Basic reactive unit. Reads inside a dynamic zone subscribe; writes notify via microtask batch. Strict <code class="font-mono">===</code> equality — same value does not notify.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800 mb-6"><pre class="text-stone-300 leading-loose">import { signal } from 'bsig';
+const count = signal(0);
+count.value;    // read
+count.value = 5 // write
+count.value++;  // works</pre></div>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">const name = signal('world');
+// plain JSX — plugin makes it live, no arrow needed
+&lt;p&gt;Hello, {name.value}&lt;/p&gt;</pre></div>
+      </section>
+
+      <section id="reactive" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">reactive()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">reactive&lt;T extends object&gt;(obj: T) → T</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Deep proxy with per-property subscriptions. Nested objects are cached (stable identity) and made reactive lazily.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">import { reactive } from 'bsig';
+const state = reactive({ user: { name: 'Ada' }, items: ['a'] });
+&lt;p&gt;{state.user.name}&lt;/p&gt;   // live, no arrow</pre></div>
+      </section>
+
+      <section id="computed" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">computed()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">computed&lt;T&gt;(fn: () =&gt; T) → ReadonlySignal&lt;T&gt;</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Derived read-only signal. Recalculates when dependencies change.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">const doubled = computed(() => count.value * 2);
+&lt;p&gt;{doubled.value}&lt;/p&gt;</pre></div>
+      </section>
+
+      <section id="scope" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">scope()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">scope(fn) → stop</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Collects effects for bulk disposal. Used internally for components, dynamic zones, and list items — unmount stops everything, no leaks.</p>
+      </section>
+
+      <section id="effect" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">effect()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">effect(fn, is_scope?) → stop</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Runs immediately, re-runs on dependency change after running the previous cleanup. Dependencies are re-collected every run.</p>
+      </section>
+
+      <section id="watch" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">watch()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">watch(signal | getter, (next, prev) =&gt; void) → stop</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Like effect but skips the initial run — fires only on change.</p>
+      </section>
+
+      <section id="untrack" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">untrack()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">untrack(fn) → T</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Reads signals without subscribing.</p>
+      </section>
+
+      <section id="h" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">h() &amp; JSX</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">h(tag | Component | null, props, ...children)</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">String tag creates a real element, function tag runs once as a component, <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">null</code> is a fragment. You write JSX; the plugin emits <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">h()</code> with thunks already inserted.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">// source
+&lt;div class="card"&gt;&lt;p&gt;Hello, {name.value}&lt;/p&gt;&lt;/div&gt;
+// compiled (conceptual)
+h("div", { class: "card" }, h("p", null, "Hello, ", () => name.value));</pre></div>
+      </section>
+
+      <section id="props" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Props &amp; Events</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Write plain values. Dynamic props are auto-wrapped; <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">on*</code> and <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">ref</code> are never wrapped.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;button
+  disabled={disabled.value}
+  class={disabled.value ? 'opacity-50' : ''}
+  onClick={() => disabled.value = !disabled.value}&gt;
+  {label.value}
+&lt;/button&gt;</pre></div>
+      </section>
+
+      <section id="dynamic" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Dynamic Children</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Any expression container becomes a dynamic zone with an anchor. Ternaries, <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800"> &amp;&amp;</code>, and <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">map()</code> just work. Nodes are reused by identity; moves are patched, not recreated.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;p&gt;{show.value ? 'visible' : 'hidden'}&lt;/p&gt;
+{show.value &amp;&amp; &lt;span&gt;Appears!&lt;/span&gt;}
+&lt;ul&gt;{items.value.map(i =&gt; &lt;li&gt;{i}&lt;/li&gt;)}&lt;/ul&gt;</pre></div>
+      </section>
+
+      <section id="ref" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">ref</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Pass a signal (or callback). The element is assigned on render.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">const el = signal(null);
+onMount(() => el.value.focus());
+&lt;input ref={el} type="text" /&gt;</pre></div>
+      </section>
+
+      <section id="components" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Creating Components</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">One argument: <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">props</code>. Children live on <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">props.children</code>. Parent callbacks are plain props — call <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">props.onChange()</code> directly, no <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">emit</code>.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">function Counter(props) {
+  const count = signal(props.start ?? 0);
+  return (
+    &lt;div&gt;
+      &lt;p&gt;{count.value}&lt;/p&gt;
+      &lt;button onClick={() => count.value++}&gt;+&lt;/button&gt;
+    &lt;/div&gt;
+  );
+}
+&lt;Counter start={10} /&gt;</pre></div>
+      </section>
+
+      <section id="children" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">children</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">React-like. Render <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">{'{props.children}'}</code> directly.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">function Card(props) {
+  return (
+    &lt;div class="card"&gt;
+      {props.title &amp;&amp; &lt;h2&gt;{props.title}&lt;/h2&gt;}
+      &lt;div class="card-body"&gt;{props.children}&lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</pre></div>
+      </section>
+
+      <section id="lifecycle" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">onMount / onUnmount</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Mount fires after insertion; unmount fires on conditional/list removal or app teardown. Register <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">onUnmount</code> inside <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">onMount</code> for resources that only exist after mount.</p>
+      </section>
+
+      <section id="provide" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">provide / inject</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Context without prop drilling. Unchanged from Sigwork.</p>
+      </section>
+
+      <section id="show" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">&lt;Show&gt;</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">Show({ when, fallback?, children })</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Preferred conditional in JSX. <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">when</code> is auto-thunked by the plugin.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;Show when={show.value} fallback={&lt;i&gt;hidden&lt;/i&gt;}&gt;
+  &lt;b&gt;visible&lt;/b&gt;
+&lt;/Show&gt;</pre></div>
+      </section>
+
+      <section id="if" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">If()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">If(cond-thunk, render-thunk, fallback?) — thunks required</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Low-level helper. In <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">.jsx</code> prefer <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">&lt;Show&gt;</code> or plain ternaries; use <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">If</code> from plain JS where you control the thunks.</p>
+      </section>
+
+      <section id="for" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">For()</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">For(signal | getter | array, key | null, (item, i) =&gt; Node)</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Keyed list with node reuse. Pass the signal itself — no getter needed. Each item gets its own scope.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;ul&gt;{For(todos, 'id', item =&gt; &lt;li&gt;{item.text}&lt;/li&gt;)}&lt;/ul&gt;
+// unkeyed: For(todos, null, ...)
+// derived: For(() => todos.value.filter(t => !t.done), 'id', ...)</pre></div>
+      </section>
+
+      <section id="transition" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">&lt;Transition&gt;</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">Transition({ enter?, idle?, leave? }) — kept as-is</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Single-child CSS transition via <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">[active, from, to]</code> arrays. Leave waits for <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">transitionend</code> before removal.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;Transition
+  enter={['transition-all duration-300', 'opacity-0', 'opacity-100']}
+  leave={['transition-all duration-200', 'opacity-100', 'opacity-0']}&gt;
+  &lt;Show when={open.value}&gt;&lt;div class="modal"&gt;Hi&lt;/div&gt;&lt;/Show&gt;
+&lt;/Transition&gt;</pre></div>
+      </section>
+
+      <section id="component" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-2">&lt;Component&gt;</h3>
+        <p class="font-mono text-sm text-stone-400 mb-6">Component({ is, ...props })</p>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Dynamic tag. <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">is</code> is stripped, remaining props (including children) forward. Reactive <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">is</code> remounts.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">&lt;Component is={() => views[route.value]} /&gt;</pre></div>
+      </section>
+
+      <section id="app" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">App Mounting</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6">Mounts a root component, returns an unmount that stops all scopes, runs unmount hooks, and removes DOM. Fragment roots are supported.</p>
+        <div class="bg-stone-900 text-stone-50 p-6 rounded-3xl shadow-lg font-mono text-sm overflow-x-auto border border-stone-800"><pre class="text-stone-300 leading-loose">const unmount = mount(document.getElementById('app'), App);
+unmount(); // clean, no leaks</pre></div>
+      </section>
+
+      <section id="plugin" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Vite Plugin</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6"><code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">bsig/plugin</code> runs before Vite transforms: JSX expression children and dynamic props become <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">() =&gt; expr</code>, then classic JSX compiles to <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">h()</code>. It also injects <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">import { h } from "bsig"</code> (relative to each file) when the file doesn't already import <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">h</code> — so JSX files never import <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">h</code> explicitly. Skips <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">on*</code>, <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">ref</code>, existing functions, and static literals. Override the runtime path with <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">bsig({ runtime: "./path/to/runtime.js" })</code>.</p>
+      </section>
+
+      <section id="types" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">TypeScript &amp; Tests</h3>
+        <p class="text-lg text-stone-600 leading-relaxed mb-6"><code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">src/runtime.d.ts</code> gives signal generics and component prop checking; <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">npm run typecheck</code> validates <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">src/typecheck/smoke.tsx</code>. <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">npm test</code> runs 38 jsdom tests: text/prop reactivity without element rerender, computed, children, conditionals, <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">Show</code>, keyed <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">For</code> moves, fragment mount/unmount, thunk-only <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">If</code>, lifecycle ordering, unmount leak checks, provide/inject, watch/untrack/scope, reactive arrays, refs, SVG, dynamic <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">Component</code> switching, a 60-step seeded list-conformance fuzz, adjacent-swap move counting, and <code class="bg-stone-200/60 px-2 py-0.5 rounded font-mono text-sm text-orange-800">Transition</code> enter/leave timing — plus 9 compiler transform tests.</p>
+      </section>
+
+      <section id="limitations" class="scroll-mt-24">
+        <h3 class="font-serif text-4xl text-stone-800 mb-6">Known Limitations</h3>
+        <div class="flex flex-col gap-4 text-stone-600 leading-relaxed">
+          <p><strong>Vite required.</strong> Plain <code class="font-mono">h()</code> without the plugin needs manual thunks again.</p>
+          <p><strong>Transition leave is not reversible mid-exit</strong> — same as Sigwork.</p>
+          <p><strong>Shared HTML/SVG tag names</strong> inside SVG trees resolve to HTML namespace — same as Sigwork.</p>
+        </div>
+      </section>
+
+    </div>
+    <footer class="mt-24 pt-8 border-t border-stone-300 text-sm text-stone-400">bsig — better Sigwork. Signals, no VDOM, React-like JSX.</footer>
+  </main>
+<script>
+  const links = [...document.querySelectorAll('.nav-link')];
+  const secs = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const onScroll = () => {
+    let cur = null;
+    for (const s of secs) { if (s.getBoundingClientRect().top < 120) cur = s; }
+    links.forEach(a => a.classList.toggle('active', cur && a.getAttribute('href') === '#' + cur.id));
+  };
+  document.addEventListener('scroll', onScroll, { passive: true });
+</script>
+</body>
+</html>

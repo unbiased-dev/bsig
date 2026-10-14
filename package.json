@@ -1,0 +1,42 @@
+{
+  "name": "bsig",
+  "version": "0.1.0",
+  "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
+  "type": "module",
+  "main": "./runtime.js",
+  "types": "./runtime.d.ts",
+  "exports": {
+    ".": {
+      "types": "./runtime.d.ts",
+      "import": "./runtime.js",
+      "default": "./runtime.js"
+    },
+    "./plugin": "./plugin/bsig-jsx.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "runtime.js",
+    "runtime.d.ts",
+    "plugin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "7.29.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5",
+    "jsdom": "24.1.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unbiased-dev/bsig.git"
+  },
+  "homepage": "https://github.com/unbiased-dev/bsig",
+  "license": "MIT"
+}
