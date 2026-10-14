@@ -78,6 +78,25 @@ describe('components + children', () => {
     assert.equal(target.textContent, 'in');
   });
 
+  it('Show accepts plain values and signals, not just thunks', async () => {
+    const target = document.createElement('div');
+    target.appendChild(h('div', null,
+      h(Show, { when: false, fallback: h('i', null, 'fb') }, h('b', null, 'in'))
+    ));
+    await flush();
+    assert.equal(target.textContent, 'fb');
+    const s = signal(true);
+    const target2 = document.createElement('div');
+    target2.appendChild(h('div', null,
+      h(Show, { when: s }, h('b', null, 'on'))
+    ));
+    await flush();
+    assert.equal(target2.textContent, 'on');
+    s.value = false;
+    await flush();
+    assert.equal(target2.textContent, '');
+  });
+
   it('For reuses keyed nodes', async () => {
     const todos = signal([{ id: 1, t: 'a' }, { id: 2, t: 'b' }]);
     const target = document.createElement('div');

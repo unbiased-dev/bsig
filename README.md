@@ -6,12 +6,40 @@ Based on [Sigwork](https://github.com/thatjustworks/sigwork) — same engine and
 
 Write plain JSX — `{name.value}`, `disabled={off.value}`, `{show.value && <span/>}` — and the Vite plugin turns dynamic expressions into lazy bindings. Components run once; only the DOM nodes that read a changed signal update.
 
+## Start a new project
+
+Fastest — clone the Vite + TS template (pre-wired plugin, typechecking, example
+counter/list/conditional):
+
+```sh
+npx degit unbiased-dev/bsig/template my-app
+cd my-app
+npm install
+npm run dev
+```
+
+Or from a stock Vite template (`vanilla-ts` — there is no bsig template in
+`create-vite` itself):
+
+```sh
+npm create vite@latest my-app -- --template vanilla-ts
+cd my-app
+npm install github:unbiased-dev/bsig#v0.1.1
+```
+
+Then wire three things: the plugin in `vite.config.ts`
+(`import bsig from 'bsig/plugin'` + `plugins: [bsig()]`), classic JSX in
+`tsconfig.json` (`"jsx": "react", "jsxFactory": "h"`), and write `.tsx`
+components importing `{ h }` from `'bsig'` (the factory must be in scope for
+`tsc`; the plugin leaves files that already import it alone). See
+`template/` for the complete working setup.
+
 ## Install
 
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.1.0
+npm install github:unbiased-dev/bsig#v0.1.1
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.

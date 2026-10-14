@@ -306,10 +306,12 @@ export const If = (cond, renderFn, fallback = null) => {
   };
 };
 
-// <Show when={...} fallback={...}>...</Show> — plugin auto-thunks `when`
+// <Show when={...} fallback={...}>...</Show> — plugin auto-thunks `when`,
+// but signals and plain values work too.
 export const Show = (props) => {
   const kids = (props.children || []).flat(Infinity);
-  return If(props.when, () => kids, props.fallback ?? null);
+  const when = isFn(props.when) ? props.when : () => props.when?.value ?? props.when;
+  return If(when, () => kids, props.fallback ?? null);
 };
 
 export const For = (list, key, renderFn) => {

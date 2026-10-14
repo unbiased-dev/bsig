@@ -61,7 +61,10 @@ export function If(
 ): any;
 
 export interface ShowProps extends BsProps {
-  when: () => unknown;
+  // Source-level: write a plain value (`when={show.value}`) — the Vite
+  // plugin wraps JSX props into thunks, so the runtime always receives
+  // a getter. Passing a getter by hand also works.
+  when: unknown;
   fallback?: any;
 }
 export function Show(props: ShowProps): any;
