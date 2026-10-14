@@ -14,7 +14,7 @@ three wires, verified against current Vite + TS releases:
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.3.5
+npm install github:unbiased-dev/bsig#v0.3.6
 ```
 
 1. `vite.config.ts` — `import bsig from 'bsig/plugin'` + `plugins: [bsig()]`
@@ -48,7 +48,7 @@ It typechecks even under stock strict configs (`noUnusedLocals`,
 No registry needed — install straight from GitHub (use a tag for reproducible builds):
 
 ```sh
-npm install github:unbiased-dev/bsig#v0.3.5
+npm install github:unbiased-dev/bsig#v0.3.6
 ```
 
 `package.json` accepts this anywhere a version goes, and lockfiles pin the exact commit.
@@ -119,8 +119,8 @@ React habits that don't apply. One command drops it into the current project
 (replace `v0.3.4` with the newest tag):
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.3.5 bsig-skill
-# or: bunx --package github:unbiased-dev/bsig#v0.3.5 bsig-skill
+npx -p github:unbiased-dev/bsig#v0.3.6 bsig-skill
+# or: bunx --package github:unbiased-dev/bsig#v0.3.6 bsig-skill
 ```
 
 Default target is `.agents/skills/bsig/` (discovered by OpenCode, Claude

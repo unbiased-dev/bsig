@@ -54,7 +54,20 @@ describe('package manifest', () => {
 
   it('jsx-dev-runtime exposes jsx/jsxs/Fragment like the prod one', async () => {
     const prod = await import('../jsx-runtime.js');
-    assert.deepEqual(Object.keys(prod).sort(), ['Fragment', 'jsx', 'jsxs']);
+    assert.deepEqual(Object.keys(prod).sort(), ['Fragment', 'jsx', 'jsxDEV', 'jsxs']);
+    // jsxDEV ignores React's extra dev args (maybeKey, isStaticChildren, source, self)
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.Node = dom.window.Node;
+    globalThis.HTMLUnknownElement = dom.window.HTMLUnknownElement;
+    const el = prod.jsxDEV('div', { children: 'hi' }, undefined, false, { fileName: 'x' }, undefined);
+    assert.equal(el.textContent, 'hi');
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.Node;
+    delete globalThis.HTMLUnknownElement;
   });
 });
 

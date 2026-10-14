@@ -13,7 +13,7 @@ fills that gap.
 ```sh
 mkdir my-app && cd my-app
 bun init -y
-bun add github:unbiased-dev/bsig#v0.3.5
+bun add github:unbiased-dev/bsig#v0.3.6
 ```
 
 (`@babel/*` arrives as transitive deps of bsig — build-time only.)
@@ -112,10 +112,11 @@ what keeps `{count.value}` live.
   so this is Bun-side, not bsig. `development: false` (above) serves the
   bundled chunk correctly. If you need HMR, retry dev mode on a newer Bun
   and fall back here if scripts still vanish.
-- **Ahead-of-time builds:** per Bun's docs, `bunfig.toml` plugins apply to
-  `Bun.serve` and the `Bun.build()` JS API, but not yet to the `bun build`
-  CLI — a CLI-built bundle would come out static. For AOT, use a small
-  build script instead:
+- **Ahead-of-time builds:** Bun's docs say `bunfig.toml` plugins apply to
+  `Bun.serve` and the `Bun.build()` JS API but not the `bun build` CLI —
+  and that's still true on Bun 1.4.3, verified: a CLI-built bundle
+  succeeds but ignores the plugin (eager reads in the output, clicks do
+  nothing). For a reactive AOT bundle, use a small build script instead:
 
   ```ts
   // build.ts
