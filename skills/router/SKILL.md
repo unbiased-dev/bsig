@@ -161,6 +161,10 @@ components.
 - **Components run once**; a `:param` change within the same route remounts
   that leaf (the outlet key includes params) rather than re-rendering the
   instance.
+- **Scroll** — push/replace scroll to top; back/forward restore the remembered
+  offset in one microtask-deferred jump after the destination commits.
+  Traversal re-runs guards (and loaders), and a blocked traversal pins the
+  address bar to the page on screen.
 - **Loaders never block** — they may run twice (prefetch, then navigation;
   again on traversal) and start after guards pass. Keep them idempotent and
   store-driven.

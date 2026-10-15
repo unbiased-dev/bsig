@@ -34,7 +34,7 @@ case, it belongs in an opt-in entry — or not at all.
 | `jsx-runtime.js` / `.d.ts` | Automatic JSX runtime surface (types + dev fallback). The plugin does the real work. |
 | `plugin/transform.js` | Shared Babel transform: auto-thunk dynamic JSX, strip TS, inject the `h` import. |
 | `plugin/bsig-jsx.js`, `plugin/bun.js` | Vite and Bun plugins; `.d.ts` siblings. |
-| `router.js` / `router.d.ts` | Opt-in `bsig/router`: nested routes, guards, lazy, scroll restoration. |
+| `router.js` / `router.d.ts` | Opt-in `bsig/router`: nested routes, guards, loaders, prefetch, scroll restoration. |
 | `auth.js` / `auth.d.ts` | Opt-in `bsig/auth`: zero-dependency better-auth client (sessions, email sign-in/up/out, refresh triggers). |
 | `vendor/` | Vendored third-party source + license. |
 | `skills/` | Agent skills and installers (`bsig-skill`, `bsig-router-skill`, `bsig-auth-skill`). |

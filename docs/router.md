@@ -90,7 +90,9 @@ const routes: Route = {
 ```
 
 Every routed component receives `{ params, route }`. `params` values are
-URL-decoded; a catch-all (`*`) yields an array.
+URL-decoded; a catch-all (`*`) captures the rest of the path as a single
+decoded string (`/files/*` matched against `/files/a/b/c` gives
+`params['*'] === 'a/b/c'`).
 
 ## 3. Links
 
@@ -208,7 +210,8 @@ const notFound: Route = { path: '', component: NotFound };
 | `RouterOptions`, `NavigateOptions`, `RouterProps`, `RouterInstance`, `LinkProps` | Instance/props types. |
 
 Scroll restoration is managed manually (`history.scrollRestoration =
-'manual'`): new entries scroll to top, and back/forward restore the offset you
-left each entry at in a single jump. Per-entry keys are stamped onto
-`history.state`; back/forward run guards (and loaders) again, and a blocked
-traversal pins the address bar back to the page on screen.
+'manual'`): push/replace scroll to top, and back/forward restore the offset you
+left each entry at in one microtask-deferred jump, after the destination
+commits. Per-entry keys are stamped onto `history.state`; back/forward re-run
+guards (and loaders), and a blocked traversal pins the address bar back to the
+page on screen.
