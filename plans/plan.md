@@ -1,6 +1,6 @@
 # Plan: slim `bsig/router` (guard/loader API, drop lazy, single-jump scroll, fixes, dedupe, vendor trim)
 
-Status: complete — all 8 steps Done; release (tag/push/publish) left to the user · Last updated: 2026-10-15
+Status: complete — all 8 steps Done and v0.7.0 released · Last updated: 2026-10-15
 
 ## For a fresh session (read this first)
 
@@ -399,6 +399,17 @@ After **every** step (this is how fresh sessions stay in sync):
   commit that contains its own hash without an amend loop. Release (tag
   `v0.7.0`, push, `gh release create`, tag-install check) is the user's call;
   `router-slim` is not merged into `main`.
+- 2026-10-15 (release): the user directed the release, so the deferred items
+  were executed. `router-slim` merged into `main` with `--no-ff` as `41dc075`
+  ("v0.7.0: slim the router (guard/loader hooks, no lazy, single-jump
+  scroll)"); on the merge, `bun test` 144 pass / 24 skip, `bun run typecheck`,
+  `bun run test:browser` 24 pass, and the demo typecheck/build were all green.
+  Annotated tag `v0.7.0` on `41dc075`; `main` + tag pushed (`8202042..41dc075`,
+  new tag). GitHub release published from the changelog notes (title "v0.7.0 —
+  slimmer router, guard/loader hooks"): https://github.com/unbiased-dev/bsig/releases/tag/v0.7.0.
+  `npm install github:unbiased-dev/bsig#v0.7.0` verified (installs `bsig`
+  0.7.0; exports include `./router` and `./auth`). Local branch `router-slim`
+  kept (never pushed); `plans/step-*.md` remain untracked.
 
 ## Definition of done (whole plan)
 
@@ -425,4 +436,6 @@ After **every** step (this is how fresh sessions stay in sync):
       `CHANGELOG.md` consistent with the new surface.
 - [x] Final size table in this file updated; router raw size below
       `runtime.js` raw size.
-- [ ] Release decision (tag/push/publish) left to the user.
+- [x] Release decision (tag/push/publish): released **v0.7.0** on 2026-10-15
+      (merge commit `41dc075`; GitHub release
+      <https://github.com/unbiased-dev/bsig/releases/tag/v0.7.0>).
