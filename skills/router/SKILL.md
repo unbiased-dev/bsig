@@ -1,6 +1,6 @@
 ---
 name: router
-description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), beforeEnter guards, lazy() routes, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
+description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), beforeEnter guards, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
 ---
 
 # bsig/router
@@ -76,7 +76,7 @@ needed.
 - **`router.pathname`** — a reactive signal of the current pathname. Read
   `router.pathname.value` in JSX to stay live.
 - **`router.isActive(to)`** — whether `to` is the active path.
-- **`router.prefetch(to)`** — warm guards + lazy chunks without navigating.
+- **`router.prefetch(to)`** — warm guards + component preload hooks without navigating.
 - **`matchTree(routes, pathname, base)`** — pure matcher (chain or `null`).
 
 ## Route config
@@ -114,14 +114,11 @@ Hooks may be async.
 - A boot-time redirect rewrites the address bar (`replaceState`) instead of
   pushing — the user never navigated anywhere.
 
-## Lazy routes & prefetch
+## Prefetch
 
-- **`lazy(() => import('./pages/X'), loading?)`** — imports on first visit (not
-  app start); cached for revisits; emits a real bundler chunk. Optional
-  `loading` node (default: nothing). Exposes `.preload()`.
 - `<Link>` prefetches on hover/focus/`pointerdown` (touch): runs guards
-  (verdict ignored) and loads lazy chunks. Best-effort — failures are swallowed
-  and failed imports retry.
+  (verdict ignored) and warms component preload hooks. Best-effort — failures
+  are swallowed.
 
 ## Matching rules
 

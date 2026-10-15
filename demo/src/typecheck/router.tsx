@@ -1,5 +1,5 @@
 import { h } from 'bsig';
-import { Router, Outlet, Link, lazy, matchTree } from 'bsig/router';
+import { Router, Outlet, Link, matchTree } from 'bsig/router';
 import type { BeforeEnterFn, Route, RouteProps } from 'bsig/router';
 
 const guard: BeforeEnterFn = ({ to, from }) => {
@@ -9,7 +9,6 @@ const guard: BeforeEnterFn = ({ to, from }) => {
 
 const Home = () => <p>home</p>;
 const User = ({ params }: RouteProps) => <p>{params.id as never}</p>;
-const Lazy = lazy(() => Promise.resolve({ default: Home }), <p>loading</p>);
 
 const Layout = () => (
   <div>
@@ -24,7 +23,6 @@ const routes: Route = {
   children: [
     { path: '/', component: Home },
     { path: '/users/:id', component: User, beforeEnter: guard },
-    { path: '/lazy', component: Lazy },
   ],
 };
 

@@ -1078,61 +1078,6 @@ describe('router: lifecycle', () => {
   });
 });
 
-describe('router: lazy', () => {
-  it('renders loading, then the loaded component', async () => {
-    const { rt, router } = await setup('http://localhost/lazy');
-    const { h } = rt;
-    let release;
-    const pending = new Promise((res) => (release = res));
-    const Loaded = () => h('p', { class: 'loaded' }, 'loaded');
-    const Lazy = router.lazy(() => pending.then(() => ({ default: Loaded })), h('p', { class: 'loading' }, 'loading'));
-    const routes = {
-      path: '/',
-      component: () => h('div', null, h(router.Outlet, null)),
-      children: [{ path: '/lazy', component: Lazy }],
-    };
-    const r = router.createRouter({ routes });
-    const app = mountApp(rt, router, r);
-    await settle();
-    expect(app.target.querySelector('.loading')).toBeTruthy(); // loading placeholder first
-    release();
-    await settle();
-    expect(app.target.querySelector('.loaded').textContent).toBe('loaded');
-    app.unmount();
-  });
-
-  it('keeps the placeholder when a chunk fails, then retries on the next preload', async () => {
-    const { rt, router } = await setup('http://localhost/lazy');
-    const { h } = rt;
-    let attempts = 0;
-    const Loaded = () => h('p', { class: 'loaded' }, 'loaded');
-    const Lazy = router.lazy(() => {
-      attempts += 1;
-      // First load rejects: the placeholder must stay and the loader must be
-      // re-armed so a later preload can retry the chunk.
-      return attempts === 1
-        ? Promise.reject(new Error('chunk failed'))
-        : Promise.resolve({ default: Loaded });
-    }, h('p', { class: 'loading' }, 'loading'));
-    const routes = {
-      path: '/',
-      component: () => h('div', null, h(router.Outlet, null)),
-      children: [{ path: '/lazy', component: Lazy }],
-    };
-    const r = router.createRouter({ routes });
-    const app = mountApp(rt, router, r);
-    await settle();
-    expect(app.target.querySelector('.loading')).toBeTruthy();
-    expect(app.target.querySelector('.loaded')).toBeNull();
-
-    Lazy.preload(); // rejection reset `started`, so this second attempt runs
-    await settle();
-    expect(attempts).toBe(2);
-    expect(app.target.querySelector('.loaded').textContent).toBe('loaded');
-    app.unmount();
-  });
-});
-
 describe('router: scroll restoration', () => {
   it('push scrolls to top and traversal restores the saved offset', async () => {
     const { rt, router } = await setup('http://localhost/a');

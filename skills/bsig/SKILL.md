@@ -444,8 +444,6 @@ mount(document.getElementById('app')!, () => <Router routes={routes} />);
   `component` is the layout. Routed components get `{ params, route }`.
 - `beforeEnter({ to, from })` returns `true`/`undefined` (allow), `false`
   (block), or a path / `{ path, replace? }` (redirect); may be async.
-- `lazy(() => import('./Page'), loading?)` renders the fallback until the
-  module's `default` resolves, and exposes `.preload()`.
 - `createRouter({ routes, notFound?, beforeEnter? })` gives you `navigate`,
   `prefetch`, `isActive`, and `pathname`. `matchTree()` matches without
   rendering.

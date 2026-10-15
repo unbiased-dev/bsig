@@ -15,33 +15,6 @@ import { h, signal, provide, inject, onUnmount } from './runtime.js';
 // Vendored (MIT) so the router stays dependency-free; see vendor/regexparam.js.
 import { parse } from './vendor/regexparam.js';
 
-export const lazy = (loader, loading) => {
-  let Component = null;
-  let started = false;
-  const loaded = signal(false);
-
-  const start = () => {
-    if (started) return;
-    started = true;
-    loader()
-      .then((mod) => {
-        Component = mod.default;
-        loaded.value = true;
-      })
-      .catch(() => {
-        started = false;
-      });
-  };
-
-  const LazyComponent = (props) => () => {
-    start();
-    return loaded.value && Component ? h(Component, props) : (loading ?? null);
-  };
-
-  LazyComponent.preload = start;
-  return LazyComponent;
-};
-
 const DEPTH = Symbol('router.depth');
 
 let activeRouter = null;

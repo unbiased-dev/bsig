@@ -1,5 +1,5 @@
 /* bsig/router — types for the tree-shakeable router entry point. */
-import type { Child, Signal } from './runtime.js';
+import type { Signal } from './runtime.js';
 
 export interface BeforeEnterContext {
   to: string;
@@ -44,18 +44,6 @@ export interface LinkProps {
   class?: string | (() => string);
   [key: string]: any;
 }
-
-export type LazyComponent = (props: any) => any;
-
-/**
- * Wrap an async component loader. Renders `loading` (or nothing) until the
- * module resolves, then the loaded `default` export. Exposes `preload()` so
- * `<Link>` hover/focus can warm the chunk before navigation.
- */
-export function lazy(
-  loader: () => Promise<{ default: LazyComponent }>,
-  loading?: Child,
-): LazyComponent & { preload: () => void };
 
 /**
  * Match a pathname against a route tree. Returns the chain of matched routes

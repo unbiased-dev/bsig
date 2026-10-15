@@ -1,7 +1,7 @@
 # bsig/router
 
-A small, signal-native router for bsig: nested layouts, params, guards,
-lazy pages, and per-entry scroll restoration. It lives in its own module —
+A small, signal-native router for bsig: nested layouts, params, guards, and
+per-entry scroll restoration. It lives in its own module —
 importing `bsig/router` pulls it in, and a build that never imports it leaves
 it (and its vendored path matcher) out of the bundle entirely.
 
@@ -145,20 +145,7 @@ const routes: Route = {
 A boot-time redirect rewrites the address bar (via `replaceState`) rather than
 pushing a new entry — the user never navigated anywhere.
 
-## 5. Lazy pages
-
-```tsx
-import { lazy } from 'bsig/router';
-
-const Settings = lazy(() => import('./Settings'), <p>Loading…</p>);
-// use as: { path: '/settings', component: Settings }
-```
-
-The loading fallback renders until the module's `default` resolves. `<Link>`
-hover/focus calls `Settings.preload()` so the chunk is usually ready before the
-click.
-
-## 6. 404s
+## 5. 404s
 
 ```tsx
 const routes: Route = { path: '/', component: Layout, children: [/* … */] };
@@ -174,7 +161,6 @@ const notFound: Route = { path: '', component: NotFound };
 | `Outlet` | Renders the route matched at this nesting depth. |
 | `Link` | Navigation link with `aria-current` and prefetch. |
 | `createRouter({ routes, notFound?, beforeEnter? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
-| `lazy(loader, loading?)` | Async route component with `.preload()`. |
 | `matchTree(routes, pathname, base)` | Pure matcher; returns the matched chain or `null`. |
 | `Route`, `RouteProps`, `MatchedRoute` | Types. |
 | `BeforeEnterFn`, `BeforeEnterResult`, `BeforeEnterContext` | Guard types. |
