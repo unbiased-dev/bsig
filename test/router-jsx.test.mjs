@@ -73,7 +73,7 @@ const router = createRouter({ routes: { path: '/', component: Layout, children: 
     expect(app.querySelector('.page').textContent).toBe('About');
   });
 
-  it('unwraps a thunked beforeEnter guard (boot redirect)', async () => {
+  it('unwraps a thunked guard (boot redirect)', async () => {
     const { app } = await run(
       `
 import mount from 'bsig';
@@ -86,7 +86,7 @@ const routes = { path: '/', component: Layout, children: [
   { path: '/admin', component: Admin },
   { path: '/login', component: Login },
 ] };
-(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router routes={routes} beforeEnter={guard} />));
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router routes={routes} guard={guard} />));
 `,
       'http://localhost/admin',
     );

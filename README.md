@@ -114,9 +114,9 @@ Full walkthrough (server + HTML route + app): [`docs/bun.md`](docs/bun.md).
 ## Router (optional)
 
 `bsig/router` is a separate, tree-shakeable entry — a build that never imports
-it leaves it (and its vendored matcher) out of the bundle. Nested
-layouts, params, async guards, lazy pages, and scroll restoration, built on the
-History API so it behaves identically in every browser:
+it leaves it (and its vendored matcher) out of the bundle. Nested layouts,
+params, async guards, loaders, and scroll restoration, built on the History
+API so it behaves identically in every browser:
 
 ```tsx
 import mount from 'bsig';
@@ -172,7 +172,7 @@ apps that only need the session flow. Full guide: [`docs/auth.md`](docs/auth.md)
 ## Agent skills (bsig for AI assistants)
 
 Three skills ship in the package, installed with one command each (replace
-`v0.6.1` with the newest tag):
+`v0.7.0` with the newest tag):
 
 - `skills/bsig/SKILL.md` — the full bsig API: signals, effects,
   `For`/`Show`/`Transition`, the plugin's auto-thunk rules, and the React habits

@@ -15,33 +15,6 @@ import { h, signal, provide, inject, onUnmount } from './runtime.js';
 // Vendored (MIT) so the router stays dependency-free; see vendor/regexparam.js.
 import { parse } from './vendor/regexparam.js';
 
-export const lazy = (loader, loading) => {
-  let Component = null;
-  let started = false;
-  const loaded = signal(false);
-
-  const start = () => {
-    if (started) return;
-    started = true;
-    loader()
-      .then((mod) => {
-        Component = mod.default;
-        loaded.value = true;
-      })
-      .catch(() => {
-        started = false;
-      });
-  };
-
-  const LazyComponent = (props) => () => {
-    start();
-    return loaded.value && Component ? h(Component, props) : (loading ?? null);
-  };
-
-  LazyComponent.preload = start;
-  return LazyComponent;
-};
-
 const DEPTH = Symbol('router.depth');
 
 let activeRouter = null;
@@ -67,7 +40,13 @@ const matcher = (path, loose) => {
     const params = {};
     for (let i = 0; i < keys.length; i++) {
       const v = m[i + 1];
-      if (v !== undefined) params[keys[i]] = decodeURIComponent(v);
+      // Malformed escapes in the URL (`%`, `%zz`) must not throw mid-render.
+      if (v !== undefined)
+        try {
+          params[keys[i]] = decodeURIComponent(v);
+        } catch {
+          params[keys[i]] = v;
+        }
     }
     return { params };
   };
@@ -105,63 +84,39 @@ const RouteNode = ({ route, depth, params }) => {
 
 export function createRouter(options) {
   const pathname = signal('');
-  const matched = signal([]);
 
-  // The browser's built-in scroll restoration races the async route render: a
-  // lazy page mounts a short loading placeholder first, so the restored offset
-  // gets clamped and a fresh entry can keep the previous page's scroll. Drive
-  // it ourselves: remember the offset we leave each entry at, scroll to top on
-  // push/replace, and re-apply the remembered offset on traversal until the
-  // page is tall enough to hold it.
-  const history_api = globalThis.history;
+  // The matched chain for a pathname, falling back to the not-found route.
+  const matchOf = (target) =>
+    matchTree(options.routes.children ?? [], target, options.routes.path) ??
+    (options.notFound
+      ? [{ route: options.notFound, path: target, base: '', params: {} }]
+      : []);
+
+  // The browser's built-in scroll restoration does not fit a client-rendered
+  // page: drive it ourselves. Remember the offset we leave each entry at,
+  // scroll to top on push/replace, and re-apply the remembered offset on
+  // traversal in a single jump.
+  const history_api = history;
   history_api.scrollRestoration = 'manual';
 
-  const scroll_positions = new Map();
+  const scroll_positions = {};
   let scroll_token = 0;
 
+  // One deferred jump: route effects flush in a microtask, so the destination
+  // page must be committed before a non-zero offset can be applied without
+  // clamping. The scroll microtask is queued after the flush microtask (FIFO),
+  // so it runs after the commit and before paint. Top scrolls are immediate;
+  // the token cancels a pending restore when another navigation wins (e.g. a
+  // click while back/forward is in flight).
   const restore_scroll = (target) => {
     const token = ++scroll_token;
     if (target <= 0) {
       window.scrollTo(0, 0);
       return;
     }
-    // A manual scroll means the user took over — stop chasing the old offset.
-    const abort = new AbortController();
-    const stop = () => abort.abort();
-    addEventListener('wheel', stop, { passive: true, signal: abort.signal });
-    addEventListener('touchstart', stop, {
-      passive: true,
-      signal: abort.signal,
+    queueMicrotask(() => {
+      if (scroll_token === token) window.scrollTo(0, target);
     });
-    addEventListener('keydown', stop, { signal: abort.signal });
-    let frames = 0;
-    const step = () => {
-      if (abort.signal.aborted || scroll_token !== token) return;
-      window.scrollTo(0, target);
-      if (window.scrollY >= target - 1 || ++frames >= 60) {
-        abort.abort();
-        return;
-      }
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  };
-
-  const render = (target) => {
-    const result = matchTree(
-      options.routes.children ?? [],
-      target,
-      options.routes.path,
-    );
-    if (result) {
-      matched.value = result;
-    } else if (options.notFound) {
-      matched.value = [
-        { route: options.notFound, path: target, base: '', params: {} },
-      ];
-    } else {
-      matched.value = [];
-    }
   };
 
   // The History API has no per-entry keys, so stamp our own onto
@@ -169,7 +124,7 @@ export function createRouter(options) {
   // create are tracked with memory-only keys (see `traverse`).
   const STATE_KEY = 'bsig:key';
   let key_seq = 0;
-  const new_key = () => `k${++key_seq}`;
+  const new_key = () => 'k' + ++key_seq;
   let current_key = null;
   let current_href = '/';
   // Guards are async: a slow navigation superseded by a newer one must not
@@ -181,25 +136,19 @@ export function createRouter(options) {
     return s && typeof s === 'object' ? s[STATE_KEY] : undefined;
   };
 
-  const stamp = (key) => {
+  // Merge a key into whatever state the entry already carries, so rewrites
+  // never drop a payload pushed by the app (or by another router).
+  const state_with_key = (key) => {
     const s = history_api.state;
-    history_api.replaceState(
-      s && typeof s === 'object' ? { ...s, [STATE_KEY]: key } : { [STATE_KEY]: key },
-      '',
-    );
+    return { ...(s && typeof s === 'object' ? s : null), [STATE_KEY]: key };
   };
 
   const collectGuards = (target) => {
     const guards = [];
-    if (options.beforeEnter) guards.push(options.beforeEnter);
-    if (options.routes.beforeEnter) guards.push(options.routes.beforeEnter);
-    const chain =
-      matchTree(options.routes.children ?? [], target, options.routes.path) ??
-      (options.notFound
-        ? [{ route: options.notFound, path: target, base: '', params: {} }]
-        : []);
-    for (const entry of chain) {
-      if (entry.route.beforeEnter) guards.push(entry.route.beforeEnter);
+    if (options.guard) guards.push(options.guard);
+    if (options.routes.guard) guards.push(options.routes.guard);
+    for (const entry of matchOf(target)) {
+      if (entry.route.guard) guards.push(entry.route.guard);
     }
     return guards;
   };
@@ -209,17 +158,29 @@ export function createRouter(options) {
       guards.map((guard) => guard({ to, from })),
     );
     for (const result of results) {
-      if (result === false) return { type: 'block' };
-      if (typeof result === 'string')
-        return { type: 'redirect', path: result, replace: false };
-      if (result && typeof result === 'object')
-        return {
-          type: 'redirect',
-          path: result.path,
-          replace: !!result.replace,
-        };
+      if (result === false) return 0;
+      if (typeof result === 'string') return { path: result };
+      if (result && typeof result === 'object') return result;
     }
     return null;
+  };
+
+  // Loaders warm the app's own data layer; their return values are ignored and
+  // the router keeps no cache. They start after guards pass, in parallel, and
+  // never delay or fail a navigation (errors are swallowed). `async` also
+  // turns a synchronous throw into a rejection so callers' `.catch` sees it.
+  const runLoaders = async (path) => {
+    await Promise.all(
+      matchOf(path)
+        .filter((entry) => entry.route.loader)
+        .map((entry) =>
+          entry.route.loader({
+            to: path,
+            from: pathname.value,
+            params: entry.params,
+          }),
+        ),
+    );
   };
 
   // Split a target into the pathname matching and guards see and the full
@@ -229,62 +190,60 @@ export function createRouter(options) {
     return { path: url.pathname, href: url.pathname + url.search };
   };
 
+  const current = () => split(location.href);
+
   const resolve = async (to, seen, replace) => {
     const { path, href } = split(to);
     if (seen.has(path)) return null;
     seen.add(path);
     const verdict = await runGuards(collectGuards(path), path, pathname.value);
-    if (verdict === null) return { path, href, replace };
-    if (verdict.type === 'block') return null;
-    return resolve(verdict.path, seen, verdict.replace);
+    // A guard block is encoded as the internal `0` sentinel; `null` means no
+    // verdict (proceed) and any object is a redirect descriptor.
+    if (verdict === 0) return null;
+    if (verdict) return resolve(verdict.path, seen, !!verdict.replace);
+    runLoaders(path).catch(() => {});
+    return { path, href, replace };
   };
 
-  const apply = (target) => {
-    render(target.path);
-    pathname.value = target.path;
+  const apply = (path) => {
+    pathname.value = path;
   };
 
-  const commit_push = (target) => {
-    scroll_positions.set(current_key, window.scrollY);
+  const commit = ({ path, href, replace }) => {
+    scroll_positions[current_key] = window.scrollY;
     const key = new_key();
-    history_api.pushState({ [STATE_KEY]: key }, '', target.href);
+    history_api[replace ? 'replaceState' : 'pushState'](
+      { [STATE_KEY]: key },
+      '',
+      href,
+    );
     current_key = key;
-    current_href = target.href;
-    apply(target);
-    restore_scroll(0);
-  };
-
-  const commit_replace = (target) => {
-    scroll_positions.set(current_key, window.scrollY);
-    const key = new_key();
-    history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
-    // Boot always runs first, so there is an entry to rewrite.
-    current_key = key;
-    current_href = target.href;
-    apply(target);
+    current_href = href;
+    apply(path);
     restore_scroll(0);
   };
 
   const boot = async () => {
     const token = ++nav_token;
-    const here = split(window.location.pathname + window.location.search);
+    const here = current();
     let key = entry_key();
     if (!key) {
       key = new_key();
-      stamp(key);
+      history_api.replaceState(state_with_key(key), '');
     }
     current_key = key;
     current_href = here.href;
-    const target = await resolve(here.href, new Set(), false);
+    // A throwing guard fails the boot, like a blocked navigation.
+    const target = await resolve(here.href, new Set(), false).catch(() => null);
     if (token !== nav_token || !target) return;
     if (target.href !== here.href) {
       // A boot-time guard redirect (e.g. signed-out → Login) renders the
       // target, so the address bar must agree with it. A rewrite, not a new
       // entry — the user never navigated anywhere.
-      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+      history_api.replaceState(state_with_key(key), '', target.href);
       current_href = target.href;
     }
-    apply(target);
+    apply(target.path);
   };
 
   const navigate = async (to, { replace = false } = {}) => {
@@ -292,96 +251,91 @@ export function createRouter(options) {
     // A throwing guard fails the navigation, like a block.
     const target = await resolve(to, new Set(), replace).catch(() => null);
     if (token !== nav_token || target === null) return false;
-    if (target.replace) commit_replace(target);
-    else commit_push(target);
+    commit(target);
     return true;
   };
 
   const traverse = async () => {
     const token = ++nav_token;
-    const here = split(window.location.pathname + window.location.search);
-    let key = entry_key();
-    if (!key) {
-      // An entry that predates the router (or was pushed outside it): track it
-      // with a memory-only key rather than stamping state onto an entry the
-      // router does not own. Adopted entries restore scroll-to-top; entries the
-      // router creates carry their keys in `history.state`.
-      key = new_key();
-    }
+    const here = current();
+    // An entry that predates the router (or was pushed outside it): track it
+    // with a memory-only key rather than stamping state onto an entry the
+    // router does not own. Adopted entries restore scroll-to-top; router
+    // entries carry their keys in `history.state`.
+    const key = entry_key() ?? new_key();
     const target = await resolve(here.path, new Set(), false).catch(() => null);
     if (token !== nav_token) return;
     if (target === null) {
       // Blocked after the browser already moved: pin the URL back to the page
-      // on screen. Display and address bar agree again; the entry keeps its
-      // URL, so a later visit re-runs guards.
-      history_api.replaceState({ [STATE_KEY]: key }, '', current_href);
+      // on screen; the entry keeps its URL, so a later visit re-runs guards.
+      history_api.replaceState(state_with_key(key), '', current_href);
       return;
     }
+    scroll_positions[current_key] = window.scrollY;
+    current_key = key;
     if (target.href !== here.href) {
       // A guard redirected the traversal: rewrite the entry in place. The
-      // rewritten entry has no remembered offset (any saved one belongs to the
-      // pre-redirect page).
-      scroll_positions.set(current_key, window.scrollY);
-      scroll_positions.delete(key);
-      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
-      current_key = key;
+      // rewritten entry has no remembered offset (any saved one belongs to
+      // the pre-redirect page).
+      delete scroll_positions[key];
+      history_api.replaceState(state_with_key(key), '', target.href);
       current_href = target.href;
-      apply(target);
+      apply(target.path);
       restore_scroll(0);
       return;
     }
-    scroll_positions.set(current_key, window.scrollY);
-    current_key = key;
     current_href = here.href;
-    apply(target);
-    restore_scroll(scroll_positions.get(key) ?? 0);
+    apply(target.path);
+    restore_scroll(scroll_positions[key] ?? 0);
   };
 
   const handleClick = (event) => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const origin = event.target;
-    const anchor =
-      origin && typeof origin.closest === 'function' ? origin.closest('a[href]') : null;
-    if (!anchor) return;
-    if (anchor.target && anchor.target !== '_self') return;
-    if (anchor.hasAttribute('download')) return;
+    if (
+      event.defaultPrevented ||
+      event.button ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    const anchor = event.target?.closest?.('a[href]');
+    if (
+      !anchor ||
+      (anchor.target && anchor.target !== '_self') ||
+      anchor.hasAttribute('download')
+    )
+      return;
     let url;
     try {
-      url = new URL(anchor.getAttribute('href'), window.location.href);
+      // `anchor.href` is already resolved against the document base (honors
+      // `<base href>`); an unparseable href stays as-is and throws here.
+      url = new URL(anchor.href, location.href);
     } catch {
       return;
     }
-    if (url.origin !== window.location.origin) return;
-    const here = window.location;
+    if (url.origin !== location.origin) return;
     // Same-page targets (hash links, re-clicks) stay native: the browser
     // scrolls without history churn.
-    if (url.pathname === here.pathname && url.search === here.search) return;
+    if (url.pathname === location.pathname && url.search === location.search)
+      return;
     event.preventDefault();
-    void navigate(url.pathname + url.search);
+    navigate(url.pathname + url.search);
   };
 
-  const handlePopState = () => {
-    void traverse();
-  };
+  const handlePopState = () => traverse();
 
   const prefetching = new Set();
 
+  // Warm the matched route loaders (never guards). Best-effort: errors are
+  // swallowed and the in-flight Set dedupes repeated hover/focus/pointerdown
+  // bursts. `split` keeps `/path?query` targets matchable (B4).
   const prefetch = (to) => {
     if (prefetching.has(to)) return;
     prefetching.add(to);
-    (async () => {
-      try {
-        await runGuards(collectGuards(to), to, pathname.value);
-      } catch {
-        // best-effort: guards may throw during a warm-up prefetch
-      }
-      const chain =
-        matchTree(options.routes.children ?? [], to, options.routes.path) ?? [];
-      for (const entry of chain) {
-        entry.route.component?.preload?.();
-      }
-    })().finally(() => prefetching.delete(to));
+    runLoaders(split(to).path)
+      .catch(() => {})
+      .finally(() => prefetching.delete(to));
   };
 
   const isActive = (to) => {
@@ -428,19 +382,20 @@ export function createRouter(options) {
 
   const Outlet = () => {
     const depth = inject(DEPTH, 0) ?? 0;
-    let cached = [];
+    let key, node;
     return () => {
-      const m = matched.value[depth];
+      const m = matchOf(pathname.value)[depth];
       if (!m) return null;
-      const key = `${m.path}|${JSON.stringify(m.params)}`;
-      let node = cached.find(([k]) => k === key)?.[1];
-      if (!node) {
+      // Keep the node when the route + params are unchanged (e.g. a
+      // query-only navigation) so the page does not remount.
+      const next = `${m.path}|${JSON.stringify(m.params)}`;
+      if (next !== key) {
+        key = next;
         node = h(RouteNode, {
           route: m.route,
           depth: depth + 1,
           params: m.params,
         });
-        cached = [[key, node]];
       }
       return node;
     };
@@ -469,7 +424,7 @@ const unwrap = (v) => (typeof v === 'function' ? v() : v);
 
 // A guard is itself a function, so it may arrive either directly (written as a
 // function expression, untouched by the plugin) or wrapped in a plugin thunk
-// (`beforeEnter={guard}` -> `() => guard`). Resolve at call time: a thunk is
+// (`guard={fn}` -> `() => fn`). Resolve at call time: a thunk is
 // zero-arg and returns the guard, while a real zero-arg guard returns its
 // verdict. Calling it lazily avoids invoking a guard during setup.
 const asGuard = (v) => {
@@ -486,7 +441,7 @@ export const Router = (props) => {
     createRouter({
       routes: unwrap(props.routes),
       notFound: unwrap(props.notFound),
-      beforeEnter: asGuard(props.beforeEnter),
+      guard: asGuard(props.guard),
     });
   activeRouter = router;
   // One document-level click interceptor owns every same-document link (plain

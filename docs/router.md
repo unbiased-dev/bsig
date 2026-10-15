@@ -1,7 +1,7 @@
 # bsig/router
 
 A small, signal-native router for bsig: nested layouts, params, guards,
-lazy pages, and per-entry scroll restoration. It lives in its own module —
+loaders, and per-entry scroll restoration. It lives in its own module —
 importing `bsig/router` pulls it in, and a build that never imports it leaves
 it (and its vendored path matcher) out of the bundle entirely.
 
@@ -13,7 +13,7 @@ so blocks and redirects never flicker.
 
 ## 1. Set up routes
 
-A route is `{ path, component, children?, beforeEnter? }`. The root route's
+A route is `{ path, component, children?, guard?, loader? }`. The root route's
 `path` is the base and its `component` is the layout. Layouts render
 `<Outlet/>` where the matched child should go.
 
@@ -60,7 +60,7 @@ The root layout may return a fragment (`<><nav/><Outlet/></>`); a fragment root
 is resolved like any other. `<Router>` can be mounted anywhere a component can —
 as the app root or nested inside another component, including conditionally
 (such as inside `<Show>`). Its config props (`routes`, `router`, `notFound`,
-`beforeEnter`) are read back out of the JSX plugin's auto-thunks, so passing them
+`guard`) are read back out of the JSX plugin's auto-thunks, so passing them
 by reference works as written.
 
 ## 2. Nested routes and params
@@ -90,7 +90,9 @@ const routes: Route = {
 ```
 
 Every routed component receives `{ params, route }`. `params` values are
-URL-decoded; a catch-all (`*`) yields an array.
+URL-decoded; a catch-all (`*`) captures the rest of the path as a single
+decoded string (`/files/*` matched against `/files/a/b/c` gives
+`params['*'] === 'a/b/c'`).
 
 ## 3. Links
 
@@ -101,8 +103,8 @@ import { Link } from 'bsig/router';
 ```
 
 `<Link>` sets `href` and `aria-current="page"` when the target is active, and
-prefetches the destination on hover, focus, and pointer-down. Style the active
-state in your components layer:
+prefetches the destination on hover, focus, and pointer-down — warming its
+loaders, not its guards. Style the active state in your components layer:
 
 ```css
 [aria-current='page'] {
@@ -121,7 +123,7 @@ await router.navigate('/', { replace: true });
 
 ## 4. Guards
 
-`beforeEnter` runs before a route activates. Return:
+`guard` runs before a route activates. Return:
 
 - `true` / `undefined` — allow
 - `false` — block (navigation is aborted, the page does not change)
@@ -134,10 +136,10 @@ They may be async.
 const routes: Route = {
   path: '/',
   component: Layout,
-  beforeEnter: ({ to }) => (to.startsWith('/admin') && !isSignedIn() ? '/login' : true),
+  guard: ({ to }) => (to.startsWith('/admin') && !isSignedIn() ? '/login' : true),
   children: [
     { path: '/login', component: Login },
-    { path: '/admin', component: Admin, beforeEnter: () => (isAdmin() ? true : false) },
+    { path: '/admin', component: Admin, guard: () => (isAdmin() ? true : false) },
   ],
 };
 ```
@@ -145,18 +147,45 @@ const routes: Route = {
 A boot-time redirect rewrites the address bar (via `replaceState`) rather than
 pushing a new entry — the user never navigated anywhere.
 
-## 5. Lazy pages
+## 5. Loaders
+
+`loader` warms your own data layer for a route. It runs after a navigation's
+guards pass, and may also run on prefetch:
 
 ```tsx
-import { lazy } from 'bsig/router';
+import { signal } from 'bsig';
 
-const Settings = lazy(() => import('./Settings'), <p>Loading…</p>);
-// use as: { path: '/settings', component: Settings }
+const user = signal<User | null>(null);
+
+const User = () => (
+  <Show when={user.value} fallback={<p>Loading…</p>}>
+    <h1>{user.value!.name}</h1>
+  </Show>
+);
+
+const routes: Route = {
+  path: '/users/:id',
+  component: User,
+  loader: async ({ params }) => {
+    user.value = await fetchUser(params.id); // write your own store
+  },
+};
 ```
 
-The loading fallback renders until the module's `default` resolves. `<Link>`
-hover/focus calls `Settings.preload()` so the chunk is usually ready before the
-click.
+- The context is `{ to, from, params }`: the target and current pathnames (no
+  query string) plus the route's matched params.
+- The return value is **ignored** — the router keeps no cache and passes no
+  data to components (there is no `useLoaderData`-style result). Components
+  mount immediately and react to your store as the loader fills it.
+- Loaders start **after guards pass** and run in parallel across the matched
+  chain, but never delay the URL change or the page swap. A rejection never
+  fails a navigation — errors are swallowed, so write error state to your own
+  store.
+- Hovering a `<Link>` (or calling `router.prefetch('/path')`) runs the matched
+  loaders best-effort — **no guards run**.
+- Loaders re-run on every navigation, including back/forward, and can run
+  twice for one destination (prefetch, then navigation). Keep them
+  **idempotent** — rely on HTTP caches or dedupe promises in your data layer.
 
 ## 6. 404s
 
@@ -170,18 +199,19 @@ const notFound: Route = { path: '', component: NotFound };
 
 | Export | Purpose |
 | --- | --- |
-| `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `beforeEnter?`, `router?`. |
+| `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `guard?`, `router?`. |
 | `Outlet` | Renders the route matched at this nesting depth. |
 | `Link` | Navigation link with `aria-current` and prefetch. |
-| `createRouter({ routes, notFound?, beforeEnter? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
-| `lazy(loader, loading?)` | Async route component with `.preload()`. |
+| `createRouter({ routes, notFound?, guard? })` | Imperative instance: `navigate`, `prefetch` (warms matched loaders, never guards), `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
 | `matchTree(routes, pathname, base)` | Pure matcher; returns the matched chain or `null`. |
-| `Route`, `RouteProps`, `MatchedRoute` | Types. |
-| `BeforeEnterFn`, `BeforeEnterResult`, `BeforeEnterContext` | Guard types. |
+| `Route`, `RouteProps`, `MatchedRoute` | Types (`Route`: `path`, `component`, `children?`, `guard?`, `loader?`). |
+| `GuardFn`, `GuardResult`, `GuardContext` | Guard types. |
+| `LoaderFn`, `LoaderContext` | Loader types. |
 | `RouterOptions`, `NavigateOptions`, `RouterProps`, `RouterInstance`, `LinkProps` | Instance/props types. |
 
 Scroll restoration is managed manually (`history.scrollRestoration =
-'manual'`): new entries scroll to top, back/forward restore the offset you left
-each entry at, and manual scrolling during restore cancels it. Per-entry keys
-are stamped onto `history.state`; back/forward run guards again, and a blocked
-traversal pins the address bar back to the page on screen.
+'manual'`): push/replace scroll to top, and back/forward restore the offset you
+left each entry at in one microtask-deferred jump, after the destination
+commits. Per-entry keys are stamped onto `history.state`; back/forward re-run
+guards (and loaders), and a blocked traversal pins the address bar back to the
+page on screen.

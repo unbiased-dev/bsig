@@ -1,20 +1,34 @@
 /* bsig/router — types for the tree-shakeable router entry point. */
-import type { Child, Signal } from './runtime.js';
+import type { Signal } from './runtime.js';
 
-export interface BeforeEnterContext {
+export interface GuardContext {
   to: string;
   from: string;
 }
 
-export type BeforeEnterResult =
+export type GuardResult =
   | boolean
   | string
   | { path: string; replace?: boolean }
   | undefined;
 
-export type BeforeEnterFn = (
-  context: BeforeEnterContext,
-) => BeforeEnterResult | Promise<BeforeEnterResult>;
+export type GuardFn = (
+  context: GuardContext,
+) => GuardResult | Promise<GuardResult>;
+
+export interface LoaderContext {
+  to: string;
+  from: string;
+  params: Record<string, string | string[]>;
+}
+
+/**
+ * Route data warm-up. Return value is ignored; must be idempotent and safe to
+ * run on hover. Starts after guards pass on navigation without delaying the
+ * commit (errors are swallowed — write error state to your own store), and
+ * runs best-effort on prefetch.
+ */
+export type LoaderFn = (context: LoaderContext) => unknown;
 
 /** Props every routed component receives. */
 export interface RouteProps {
@@ -29,7 +43,8 @@ export interface Route {
   path: string;
   component: RouteComponent;
   children?: Route[];
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
+  loader?: LoaderFn;
 }
 
 export interface MatchedRoute {
@@ -45,18 +60,6 @@ export interface LinkProps {
   [key: string]: any;
 }
 
-export type LazyComponent = (props: any) => any;
-
-/**
- * Wrap an async component loader. Renders `loading` (or nothing) until the
- * module resolves, then the loaded `default` export. Exposes `preload()` so
- * `<Link>` hover/focus can warm the chunk before navigation.
- */
-export function lazy(
-  loader: () => Promise<{ default: LazyComponent }>,
-  loading?: Child,
-): LazyComponent & { preload: () => void };
-
 /**
  * Match a pathname against a route tree. Returns the chain of matched routes
  * (parents first) or `null`. Exported for tests and custom integrations.
@@ -71,7 +74,7 @@ export interface RouterOptions {
   /** Root route; its `path` is the base and its `component` is the layout. */
   routes: Route;
   notFound?: Route;
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 
 export interface NavigateOptions {
@@ -90,6 +93,7 @@ export type RouterInstance = {
   handlePopState(): void;
   boot(): Promise<void>;
   Link: (props: LinkProps) => any;
+  /** Warm matched route loaders (never guards). */
   prefetch(to: string): void;
   isActive(to: string): boolean;
   pathname: Signal<string>;
@@ -99,7 +103,7 @@ export interface RouterProps {
   router?: RouterInstance;
   routes?: Route;
   notFound?: Route;
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 
 /** Mounts the router and renders the root layout. Use once, at the app root. */

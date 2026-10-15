@@ -7,9 +7,26 @@ for new capability, **patch** for fixes.
 
 ## v0.7.0
 
-**Breaking:** `bsig/router` drops the Navigation API for the History API, so
-routing works identically in every browser (Safari included).
+**Breaking:** `bsig/router` drops the Navigation API for the History API (so
+routing works identically in every browser, Safari included) and reworks the
+hook surface: `lazy()` is gone, `beforeEnter` is renamed to `guard`, and
+routes gain a `loader`.
 
+- **Breaking:** `lazy()` is removed. Route components are plain static
+  components; split chunks at the app/bundler level if you need to.
+- **Breaking:** `beforeEnter` is renamed to **`guard`** (route field, router
+  option, `<Router guard={...}>`); the `BeforeEnter*` types become `Guard*`.
+  Semantics are unchanged: allow / block / redirect, async, precommit, re-run
+  on traversal.
+- **Breaking:** routes gain a **`loader({ to, from, params })`** hook for
+  warming the app's data layer, replacing the component `preload()`
+  convention. The return value is ignored — no `useLoaderData`, no router
+  cache; components keep reading your store. On navigation, guards run first,
+  then loaders start in parallel while the commit/render proceeds: they never
+  delay or fail a navigation (errors are swallowed; write error state to your
+  own store). Loaders re-run on traversal and must be idempotent. `prefetch()`
+  warms the matched loaders only and never runs guards; `<Link>`
+  hover/focus/pointerdown inherits that.
 - One code path everywhere: `pushState`/`replaceState`, a `popstate`
   listener, and a document-level click interceptor (plain `<a>` tags too, not
   just `<Link>`). No `window.navigation` dependency, no degrade-to-full-load,
@@ -19,15 +36,27 @@ routing works identically in every browser (Safari included).
   no-op'd and guarded navigations went through.
 - Back/forward re-run guards; a blocked traversal pins the address bar back
   to the page on screen, and a redirected traversal rewrites the entry.
-- Per-entry scroll keys are stamped onto `history.state` (the History API
-  ships none); push/replace scroll to top, traversals restore the remembered
-  offset, manual scrolling still cancels a restore.
+- Scroll restoration: per-entry keys are stamped onto `history.state` (the
+  History API ships none); push/replace scroll to top, and back/forward
+  restore the remembered offset in one microtask-deferred jump after the
+  destination commits. The 60-frame rAF chase and the wheel/touchstart/keydown
+  cancel listeners are gone (`AbortController` listener options were ignored
+  on Safari < 15.4 anyway).
+- Fixes: a throwing guard during boot no longer rejects the boot (the outlet
+  stays empty, like a block); malformed `%` escapes in params no longer crash
+  a navigation; blocked/redirected traversals preserve the entry's
+  `history.state` payload; `prefetch('/path?query')` now matches.
+- The vendored `regexparam` is trimmed to the surface the router uses: string
+  patterns, `:param`, `:param?`, and `*` (no `inject`, RegExp input, or
+  `.ext`).
 - API change: `handleNavigate(event)` / `RouterNavigateEvent` are removed;
   the instance now exposes `handleClick(event)` and `handlePopState()` (wired
-  by `<Router />`, removed on unmount). `navigate()`, `boot()`, `Link`,
-  `prefetch()`, `isActive()`, and `pathname` are unchanged.
-- Tests drive the real History API (no Navigation API mock): 43 happy-dom
-  router tests plus a 22-test real-browser suite covering guard
+  by `<Router />`, removed on unmount). The rest of the surface is unchanged.
+- Size (`router.js` minified, `runtime.js` external): 6405 → 5138 raw,
+  2740 → 2352 gzip, 2468 → 2107 brotli — roughly -20% raw, and the router is
+  now smaller than the runtime it rides on.
+- Tests drive the real History API (no Navigation API mock): 50 happy-dom
+  router tests plus a 22-test router browser suite covering guard
   redirect/block and blocked back-navigation through real navigations.
 
 ## Unreleased
@@ -48,9 +77,9 @@ Tooling only — no runtime or API changes.
   `navigate()` push/replace (history length), `history.back()` traversal,
   `isActive()`, boot-time guard redirects, guard redirect/block and blocked
   back-navigation through real navigations, prefetch
-  (direct + Link hover), lazy placeholder/chunk, `onUnmount` on leave,
-  `matchTree`, `<Router routes={...}/>`, scroll-to-top on push, and a
-  kitchensink driving them together.
+  (direct + Link hover, loaders only), `onUnmount` on leave, `matchTree`,
+  `<Router routes={...}/>`, scroll-to-top on push, and a kitchensink driving
+  them together.
 - **100% coverage.** Every shipped module (`runtime`, `router`, `auth`, the
   JSX runtimes, and the plugins) is fully covered by `% Funcs` and `% Lines`;
   `bunfig.toml` keeps a floor so the harness cannot rot.

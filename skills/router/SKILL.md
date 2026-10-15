@@ -1,6 +1,6 @@
 ---
 name: router
-description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), beforeEnter guards, lazy() routes, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
+description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), guard and loader hooks, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, fire-and-forget loaders, vendored regexparam matching) so routing code follows the router's conventions.
 ---
 
 # bsig/router
@@ -14,7 +14,8 @@ history handling is built on the History API (`pushState`/`replaceState`, a
 `popstate` listener, and a document-level click interceptor), so it behaves
 identically in every browser — Safari, Firefox, Chromium, WebViews — with no
 Navigation API dependency. Guards run before the URL commits, so blocks and
-redirects never flicker; per-entry scroll keys are stamped onto
+redirects never flicker; route loaders warm your store after guards pass
+without delaying the swap; per-entry scroll keys are stamped onto
 `history.state`.
 
 This is **bsig**, not React and not the older sigwork API: components run once,
@@ -55,7 +56,7 @@ needed.
 
 ## Core API
 
-- **`<Router routes={...} notFound={...} beforeEnter={...} />`** or
+- **`<Router routes={...} notFound={...} guard={...} />`** or
   **`<Router router={instance} />`** — mounts a router. Returns the root layout
   (internally through an array), so it is safe as the app root and can also be
   nested inside another component.
@@ -67,7 +68,7 @@ needed.
 - **`<Outlet />`** — renders the matched route at the current nesting level;
   each layout renders exactly one. Use the JSX tag, not `{Outlet()}` (the tag
   creates the component context that `provide`/`inject` and lifecycles need).
-- **`createRouter({ routes, notFound, beforeEnter })`** →
+- **`createRouter({ routes, notFound, guard })`** →
   `{ RouterView, Outlet, navigate, boot, handleClick, handlePopState, prefetch,
   isActive, Link, pathname }`.
 - **`router.navigate(to, { replace? })`** → `Promise<boolean>` (`false` =
@@ -76,7 +77,7 @@ needed.
 - **`router.pathname`** — a reactive signal of the current pathname. Read
   `router.pathname.value` in JSX to stay live.
 - **`router.isActive(to)`** — whether `to` is the active path.
-- **`router.prefetch(to)`** — warm guards + lazy chunks without navigating.
+- **`router.prefetch(to)`** — warm the matched route loaders (never guards) without navigating; best-effort and deduped per target.
 - **`matchTree(routes, pathname, base)`** — pure matcher (chain or `null`).
 
 ## Route config
@@ -86,7 +87,8 @@ interface Route {
   path: string;
   component: (props: { params, route }) => any; // runs once
   children?: Route[];
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
+  loader?: LoaderFn; // warm your own store; return value ignored
 }
 ```
 
@@ -96,13 +98,13 @@ interface Route {
   (`Record<string, string | string[]>`); the route object is `props.route`.
 - Nesting is arbitrary depth; each level's layout renders its own `<Outlet />`.
 
-## Navigation guards (`beforeEnter`)
+## Navigation guards (`guard`)
 
 Return values: `false` = **block**; `string` = **redirect** (push);
 `{ path, replace?: true }` = **redirect** (replace); `undefined`/`true` = allow.
 Hooks may be async.
 
-- Global (on `createRouter` / `<Router />`) plus per-route (`route.beforeEnter`).
+- Global (on `createRouter` / `<Router />`) plus per-route (`route.guard`).
 - For a navigation, **all matched-layer hooks run in parallel** (`Promise.all`);
   the render waits for the slowest.
 - **The first definitive result in highest-parent-first order wins** — a
@@ -114,14 +116,21 @@ Hooks may be async.
 - A boot-time redirect rewrites the address bar (`replaceState`) instead of
   pushing — the user never navigated anywhere.
 
-## Lazy routes & prefetch
+## Loaders & prefetch
 
-- **`lazy(() => import('./pages/X'), loading?)`** — imports on first visit (not
-  app start); cached for revisits; emits a real bundler chunk. Optional
-  `loading` node (default: nothing). Exposes `.preload()`.
-- `<Link>` prefetches on hover/focus/`pointerdown` (touch): runs guards
-  (verdict ignored) and loads lazy chunks. Best-effort — failures are swallowed
-  and failed imports retry.
+`loader({ to, from, params })` warms the app's own store; the return value is
+ignored (no `useLoaderData`, no router cache) and the router passes no data to
+components.
+
+- Starts **after guards pass** on navigation, in parallel across the matched
+  chain, and never delays or fails the commit (fire-and-forget; errors are
+  swallowed — write error state in your store).
+- `<Link>` hover/focus/`pointerdown` and `router.prefetch(to)` run loaders
+  **only — never guards**; best-effort, errors swallowed, in-flight runs
+  deduped per target, query strings stripped (`/x?q=1` still matches).
+- Re-runs on every navigation including traversal, and may run twice
+  (prefetch + navigation): keep loaders **idempotent** (HTTP cache, promise
+  dedupe, or a check-first write).
 
 ## Matching rules
 
@@ -137,7 +146,7 @@ Hooks may be async.
 - **Mountable anywhere.** `<Router />` works as the app root or nested inside
   another component — including conditionally, e.g. wrapped in `<Show>` (its
   children are thunked so each activation remounts it). Layouts may return a
-  fragment root. Config props (`routes`/`router`/`notFound`/`beforeEnter`) are
+  fragment root. Config props (`routes`/`router`/`notFound`/`guard`) are
   unwrapped from the plugin's auto-thunks, so passing them by reference is fine.
 - `<Router />` runs its setup eagerly (initial boot + `navigate` listener)
   because bsig only flushes `onMount` for the root component and
@@ -152,8 +161,16 @@ Hooks may be async.
 - **Components run once**; a `:param` change within the same route remounts
   that leaf (the outlet key includes params) rather than re-rendering the
   instance.
-- Not React Router: no loaders, no `useParams`, no nested `<Route>` JSX. Routes
-  are plain objects, params come through props, and layouts render `<Outlet />`.
+- **Scroll** — push/replace scroll to top; back/forward restore the remembered
+  offset in one microtask-deferred jump after the destination commits.
+  Traversal re-runs guards (and loaders), and a blocked traversal pins the
+  address bar to the page on screen.
+- **Loaders never block** — they may run twice (prefetch, then navigation;
+  again on traversal) and start after guards pass. Keep them idempotent and
+  store-driven.
+- Not React Router: no `useLoaderData` (loaders warm your store; their return
+  value is ignored), no `useParams`, no nested `<Route>` JSX. Routes are plain
+  objects, params come through props, and layouts render `<Outlet />`.
 - `bsig/router` is a separate entry point — nothing is pulled into the runtime
   bundle unless imported, so adding routing never taxes non-routed pages.
 

@@ -440,17 +440,18 @@ const routes = {
 mount(document.getElementById('app')!, () => <Router routes={routes} />);
 ```
 
-- `Route` is `{ path, component, children?, beforeEnter? }`; the root's
+- `Route` is `{ path, component, children?, guard?, loader? }`; the root's
   `component` is the layout. Routed components get `{ params, route }`.
-- `beforeEnter({ to, from })` returns `true`/`undefined` (allow), `false`
+- `guard({ to, from })` returns `true`/`undefined` (allow), `false`
   (block), or a path / `{ path, replace? }` (redirect); may be async.
-- `lazy(() => import('./Page'), loading?)` renders the fallback until the
-  module's `default` resolves, and exposes `.preload()`.
-- `createRouter({ routes, notFound?, beforeEnter? })` gives you `navigate`,
+- `loader({ to, from, params })` warms your own store after guards pass
+  without delaying the navigation; its return value is ignored and it may
+  run again on prefetch/traversal, so keep it idempotent.
+- `createRouter({ routes, notFound?, guard? })` gives you `navigate`,
   `prefetch`, `isActive`, and `pathname`. `matchTree()` matches without
   rendering.
 - `<Link>` sets `aria-current="page"` when active and prefetches on
-  hover/focus.
-- This is NOT React Router: no loaders, no `useParams`, no nested `<Route>`
-  JSX. Routes are plain objects, params come through props, and layouts render
-  `<Outlet/>`.
+  hover/focus (warming route loaders, never guards).
+- This is NOT React Router: no `useLoaderData` (loaders warm your store),
+  no `useParams`, no nested `<Route>` JSX. Routes are plain objects, params
+  come through props, and layouts render `<Outlet/>`.

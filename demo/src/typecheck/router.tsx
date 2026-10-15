@@ -1,15 +1,14 @@
 import { h } from 'bsig';
-import { Router, Outlet, Link, lazy, matchTree } from 'bsig/router';
-import type { BeforeEnterFn, Route, RouteProps } from 'bsig/router';
+import { Router, Outlet, Link, matchTree } from 'bsig/router';
+import type { GuardFn, Route, RouteProps } from 'bsig/router';
 
-const guard: BeforeEnterFn = ({ to, from }) => {
+const guard: GuardFn = ({ to, from }) => {
   if (to === from) return true;
   return { path: '/login', replace: true };
 };
 
 const Home = () => <p>home</p>;
 const User = ({ params }: RouteProps) => <p>{params.id as never}</p>;
-const Lazy = lazy(() => Promise.resolve({ default: Home }), <p>loading</p>);
 
 const Layout = () => (
   <div>
@@ -23,8 +22,7 @@ const routes: Route = {
   component: Layout,
   children: [
     { path: '/', component: Home },
-    { path: '/users/:id', component: User, beforeEnter: guard },
-    { path: '/lazy', component: Lazy },
+    { path: '/users/:id', component: User, guard },
   ],
 };
 
@@ -32,5 +30,5 @@ const chain = matchTree(routes.children ?? [], '/users/1', '/');
 export const depth = chain ? chain.length : 0;
 
 export function App() {
-  return <Router routes={routes} beforeEnter={guard} />;
+  return <Router routes={routes} guard={guard} />;
 }

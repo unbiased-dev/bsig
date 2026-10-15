@@ -11,9 +11,9 @@ import plugin from '../../plugin/bun.js';
 // real History API in a simulated DOM; these tests cover the real bundled
 // output in a real browser: boot from a real URL, native Link clicks,
 // programmatic navigate(), history push/replace, back/forward traversal,
-// real scrolling, lazy chunks, and prefetch — including guard redirect/block
-// through real navigations, which is exactly what failed on Safari under the
-// old Navigation API design.
+// real scrolling and prefetch — including guard redirect/block through real
+// navigations, which is exactly what failed on Safari under the old
+// Navigation API design.
 //
 // Served over HTTP (node:http with an SPA fallback), not file://: on file://
 // `location.pathname` is the filesystem path, so no route matches and
@@ -172,7 +172,7 @@ const Admin = () => <p class="admin">admin</p>;
 const Login = () => <p class="login">login</p>;
 const Layout = () => <div class="layout"><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/admin', component: Admin, beforeEnter: function () { return '/login'; } },
+  { path: '/admin', component: Admin, guard: function () { return '/login'; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -186,7 +186,7 @@ const Admin = () => <p class="admin">admin</p>;
 const Login = () => <p class="login">login</p>;
 const Layout = () => <div class="layout"><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/admin', component: Admin, beforeEnter: function () { return { path: '/login', replace: true }; } },
+  { path: '/admin', component: Admin, guard: function () { return { path: '/login', replace: true }; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -204,9 +204,9 @@ const Layout = () => <div class="layout"><nav><Link to="/" id="link-home">home</
 window.__allowAdmin = true;
 window.__blockHome = false;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/', component: Home, beforeEnter: function () { return window.__blockHome ? false : true; } },
-  { path: '/admin', component: Admin, beforeEnter: function () { return window.__allowAdmin ? true : '/login'; } },
-  { path: '/secret', component: Secret, beforeEnter: function () { return false; } },
+  { path: '/', component: Home, guard: function () { return window.__blockHome ? false : true; } },
+  { path: '/admin', component: Admin, guard: function () { return window.__allowAdmin ? true : '/login'; } },
+  { path: '/secret', component: Secret, guard: function () { return false; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -215,19 +215,15 @@ mount(document.getElementById('app'), () => <Router router={router} />);
 
 const HEAVY = `
 import mount from '../../runtime.js';
-import { createRouter, Router, Outlet, Link, lazy } from '../../router.js';
+import { createRouter, Router, Outlet, Link } from '../../router.js';
 const Home = () => <p class="home">home</p>;
-const HeavyLoaded = () => <p class="loaded">heavy-loaded</p>;
+const Heavy = () => <p class="loaded">heavy-loaded</p>;
 window.__loaderRan = false;
 window.__guardCalls = [];
-const Heavy = lazy(function () {
-  window.__loaderRan = true;
-  return new Promise(function (res) { window.__loadHeavy = function () { res({ default: HeavyLoaded }); }; });
-}, <p class="loading-heavy">loading-heavy</p>);
 const Layout = () => <div class="layout"><nav><Link to="/" id="link-home">home</Link><Link to="/heavy" id="link-heavy">heavy</Link></nav><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
   { path: '/', component: Home },
-  { path: '/heavy', component: Heavy, beforeEnter: function () { window.__guardCalls.push('heavy'); return true; } },
+  { path: '/heavy', component: Heavy, loader: function () { window.__loaderRan = true; }, guard: function () { window.__guardCalls.push('heavy'); return true; } },
 ]}});
 window.__router = router;
 mount(document.getElementById('app'), () => <Router router={router} />);
@@ -277,17 +273,12 @@ mount(document.getElementById('app'), () => <Router router={router} />);
 
 const KITCHEN = `
 import mount, { onUnmount } from '../../runtime.js';
-import { createRouter, Router, Outlet, Link, lazy } from '../../router.js';
+import { createRouter, Router, Outlet, Link } from '../../router.js';
 window.__events = [];
-window.__heavyStarted = false;
 const Home = () => <p class="home">home</p>;
 const Users = () => <div class="users"><p class="users-title">users</p><Outlet /></div>;
 const User = (props) => <p class="user">{"User " + props.params.id}</p>;
-const HeavyLoaded = () => { onUnmount(function () { window.__events.push('heavy'); }); return <p class="loaded">heavy-loaded</p>; };
-const Heavy = lazy(function () {
-  window.__heavyStarted = true;
-  return new Promise(function (res) { window.__releaseHeavy = function () { res({ default: HeavyLoaded }); }; });
-}, <p class="loading">loading-heavy</p>);
+const Heavy = () => { onUnmount(function () { window.__events.push('heavy'); }); return <p class="loaded">heavy-loaded</p>; };
 const Admin = () => <p class="admin">admin</p>;
 const Login = () => <p class="login">login</p>;
 const Missing = () => <p class="nf">404</p>;
@@ -297,7 +288,7 @@ const router = createRouter({
     { path: '/', component: Home },
     { path: '/users', component: Users, children: [{ path: '/:id', component: User }] },
     { path: '/heavy', component: Heavy },
-    { path: '/admin', component: Admin, beforeEnter: function () { return '/login'; } },
+    { path: '/admin', component: Admin, guard: function () { return '/login'; } },
     { path: '/login', component: Login },
   ]},
   notFound: { path: '', component: Missing },
@@ -533,41 +524,29 @@ describe.skipIf(!available)('router in a real browser', () => {
     }
   });
 
-  it('prefetch() runs guards and warms the lazy chunk', async () => {
+  it('prefetch() warms route loaders and never runs guards', async () => {
     const { base, stop } = await serveApp(HEAVY);
     const view = await openPage(base, '/');
     try {
       expect(await waitText(view, '.home')).toBe('home');
-      await view.evaluate(`window.__router.prefetch('/heavy')`);
+      // B4: a query-string target must still match (and warm) its route.
+      await view.evaluate(`window.__router.prefetch('/heavy?page=2')`);
       expect(await waitFor(view, `window.__loaderRan`)).toBe(true);
-      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('["heavy"]');
+      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('[]');
     } finally {
       view.close();
       await stop();
     }
   });
 
-  it('hovering a Link prefetches its route', async () => {
+  it('hovering a Link prefetches its route loaders without guards', async () => {
     const { base, stop } = await serveApp(HEAVY);
     const view = await openPage(base, '/');
     try {
       expect(await waitText(view, '.home')).toBe('home');
       await view.evaluate(`document.getElementById('link-heavy').dispatchEvent(new Event('mouseenter'))`);
       expect(await waitFor(view, `window.__loaderRan`)).toBe(true);
-    } finally {
-      view.close();
-      await stop();
-    }
-  });
-
-  it('lazy renders a placeholder first, then the chunk on release', async () => {
-    const { base, stop } = await serveApp(HEAVY);
-    const view = await openPage(base, '/heavy');
-    try {
-      expect(await waitText(view, '.loading-heavy')).toBe('loading-heavy');
-      expect(await text(view, '.loaded')).toBeNull();
-      await view.evaluate(`window.__loadHeavy()`);
-      expect(await waitText(view, '.loaded')).toBe('heavy-loaded');
+      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('[]');
     } finally {
       view.close();
       await stop();
@@ -635,7 +614,30 @@ describe.skipIf(!available)('router in a real browser', () => {
     }
   });
 
-  it('kitchensink: nested params, lazy, guards, links, and notFound together', async () => {
+  it('back() restores the scroll offset of the previous page in one jump', async () => {
+    const { base, stop } = await serveApp(TALL);
+    const view = await openPage(base, '/');
+    try {
+      expect(await waitText(view, '.home')).toBe('home');
+      // Leave / scrolled down; the push to /about must go to the top.
+      await view.evaluate(`window.scrollTo(0, 800)`);
+      await waitFor(view, `window.scrollY > 700`);
+      expect(await view.evaluate(`window.__router.navigate('/about')`)).toBe(true);
+      expect(await waitText(view, '.about')).toBe('about');
+      expect(await view.evaluate(`window.scrollY`)).toBe(0);
+      await view.evaluate(`window.scrollTo(0, 500)`);
+      await waitFor(view, `window.scrollY > 400`);
+      await view.evaluate(`history.back()`);
+      expect(await waitText(view, '.home')).toBe('home');
+      // One jump restores the offset we left / at.
+      expect(await waitFor(view, `window.scrollY > 700`)).toBe(true);
+    } finally {
+      view.close();
+      await stop();
+    }
+  });
+
+  it('kitchensink: nested params, guards, links, and notFound together', async () => {
     const { base, stop } = await serveApp(KITCHEN);
     const view = await openPage(base, '/');
     try {
@@ -649,15 +651,12 @@ describe.skipIf(!available)('router in a real browser', () => {
       expect(await view.evaluate(`window.__router.isActive('/users')`)).toBe(true);
       expect(await view.evaluate(`window.__router.pathname.value`)).toBe('/users/7');
 
-      // Lazy page: placeholder, then the chunk after release.
+      // Heavy page: plain component, still unmounted on leave.
       await view.evaluate(`document.getElementById('nav-heavy').scrollIntoView()`);
       await view.click('#nav-heavy');
-      expect(await waitText(view, '.loading')).toBe('loading-heavy');
-      expect(await view.evaluate(`window.__heavyStarted`)).toBe(true);
-      await view.evaluate(`window.__releaseHeavy()`);
       expect(await waitText(view, '.loaded')).toBe('heavy-loaded');
 
-      // Leaving the lazy page unmounts it.
+      // Leaving the heavy page unmounts it.
       await view.evaluate(`window.__router.navigate('/')`);
       expect(await waitText(view, '.home')).toBe('home');
       expect(await view.evaluate(`JSON.stringify(window.__events)`)).toBe('["heavy"]');
