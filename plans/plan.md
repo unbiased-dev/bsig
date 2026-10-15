@@ -203,7 +203,7 @@ After **every** step (this is how fresh sessions stay in sync):
 | 5 | Done | 09e11c8 | 5765/2523/2277 | Route `loader` + `matchOf`/`runLoaders`; prefetch warms loaders only (B4 fixed); happy-dom 143 pass / 24 skip; browser suite ran (24 pass); demo typecheck+build green. |
 | 6 | Done | 355304c | 5262/2412/2168 | All 7 zero-behavior items landed; no API/behavior change. happy-dom 143 pass / 24 skip; browser suite ran (24 pass); typecheck + demo green. Router raw −503 B vs step 5. |
 | 7 | Done | d8deda2 | 5138/2352/2107 | Vendored matcher trimmed (drop `inject`/RegExp/`.ext`); new matchTree test locks `:param?` + `*`; happy-dom 144 pass / 24 skip; browser 24 pass; tree-shake 2 pass; typecheck + demo green. Router raw −124 B vs step 6, under `runtime.js` (5444). |
-| 8 | Done | (recorded next) | 5138/2352/2107 | Full verification green: happy-dom 144 pass / 24 skip, browser suite ran (24 pass), typecheck + demo typecheck/build green. Doc sweep clean; changelog rewritten as 0.7.0 release notes; final sizes recorded (router raw < runtime raw). Release left to the user. |
+| 8 | Done | 3271f30 | 5138/2352/2107 | Full verification green: happy-dom 144 pass / 24 skip, browser suite ran (24 pass), typecheck + demo typecheck/build green. Doc sweep clean; changelog rewritten as 0.7.0 release notes; final sizes recorded (router raw < runtime raw). Release left to the user. |
 
 ## Handoff notes (append per step)
 
@@ -394,10 +394,10 @@ After **every** step (this is how fresh sessions stay in sync):
   2468→2107 brotli); the Unreleased browser bullet says "prefetch (direct +
   Link hover, loaders only)" and no longer lists lazy placeholder/chunk.
   Deviation: the step's single commit was split into the docs commit (all doc
-  files plus this plan, message per the step) and a follow-up bookkeeping
-  commit that records that hash here — the Progress log cannot cite a commit
-  that contains its own hash without an amend loop. Release (tag `v0.7.0`,
-  push, `gh release create`, tag-install check) is the user's call;
+  files plus this plan, message per the step — `3271f30`) and this follow-up
+  bookkeeping commit that records that hash — the Progress log cannot cite a
+  commit that contains its own hash without an amend loop. Release (tag
+  `v0.7.0`, push, `gh release create`, tag-install check) is the user's call;
   `router-slim` is not merged into `main`.
 
 ## Definition of done (whole plan)
