@@ -969,39 +969,52 @@ describe('router: click interception', () => {
 });
 
 describe('router: Link + prefetch + isActive', () => {
-  it('prefetch runs guards and component preload', async () => {
+  it('prefetch runs loaders but not guards, including query targets', async () => {
     const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
-    let preloaded = false;
-    const Heavy = Object.assign(() => h('p', null, 'heavy'), {
-      preload: () => (preloaded = true),
-    });
+    let loads = 0;
+    let guarded = 0;
     const routes = {
       path: '/',
       component: () => h('div', null, h(router.Outlet, null)),
       children: [
         { path: '/', component: () => h('p', null, 'home') },
-        { path: '/heavy', component: Heavy },
+        {
+          path: '/heavy',
+          loader: ({ to, params }) => {
+            loads += 1;
+            expect(to).toBe('/heavy');
+            expect(params).toEqual({});
+          },
+          component: () => h('p', null, 'heavy'),
+          guard: () => {
+            guarded += 1;
+            return true;
+          },
+        },
       ],
     };
-    const r = router.createRouter({ routes });
+    const r = router.createRouter({
+      routes,
+      guard: () => {
+        guarded += 1;
+        return true;
+      },
+    });
     const app = mountApp(rt, router, r);
     await settle();
-    r.prefetch('/heavy');
+    expect(guarded).toBe(1); // boot ran the global guard for '/'
+    r.prefetch('/heavy?page=2'); // B4: query string must still match
     await settle();
-    expect(preloaded).toBe(true);
+    expect(loads).toBe(1);
+    expect(guarded).toBe(1); // prefetch touched neither the global nor the route guard
     app.unmount();
   });
 
   it('Link prefetches on pointer enter, focus, and pointer down', async () => {
     const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
-    let preloads = 0;
-    const Heavy = Object.assign(() => h('p', { class: 'heavy' }, 'heavy'), {
-      preload: () => {
-        preloads += 1;
-      },
-    });
+    let loads = 0;
     const routes = {
       path: '/',
       component: () =>
@@ -1013,7 +1026,13 @@ describe('router: Link + prefetch + isActive', () => {
         ),
       children: [
         { path: '/', component: () => h('p', { class: 'home' }, 'home') },
-        { path: '/heavy', component: Heavy },
+        {
+          path: '/heavy',
+          loader: () => {
+            loads += 1;
+          },
+          component: () => h('p', { class: 'heavy' }, 'heavy'),
+        },
       ],
     };
     const r = router.createRouter({ routes });
@@ -1024,7 +1043,43 @@ describe('router: Link + prefetch + isActive', () => {
       link.dispatchEvent(new Event(type));
       await settle(); // let prefetch finish so the next event starts a fresh one
     }
-    expect(preloads).toBe(3);
+    expect(loads).toBe(3);
+    app.unmount();
+  });
+
+  it('dedupes overlapping prefetch runs, then re-runs after they finish', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    let loads = 0;
+    let release;
+    const gate = new Promise((res) => (release = res));
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', null, 'home') },
+        {
+          path: '/heavy',
+          loader: () => {
+            loads += 1;
+            return gate;
+          },
+          component: () => h('p', null, 'heavy'),
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    r.prefetch('/heavy');
+    r.prefetch('/heavy'); // overlapping burst (hover + pointerdown): deduped
+    await settle();
+    expect(loads).toBe(1);
+    release();
+    await settle();
+    r.prefetch('/heavy'); // a finished run does not suppress a later one
+    await settle();
+    expect(loads).toBe(2);
     app.unmount();
   });
 
@@ -1074,6 +1129,102 @@ describe('router: Link + prefetch + isActive', () => {
     expect(typeof router.Outlet()).toBe('function');
     const link = router.Link({ to: '/', children: 'home' });
     expect(link.getAttribute('href')).toBe('/');
+    app.unmount();
+  });
+});
+
+describe('router: loaders', () => {
+  it('starts loaders during navigation without blocking the render', async () => {
+    const { rt, router } = await setup('http://localhost/a');
+    const { h, signal } = rt;
+    const data = signal(null);
+    const seen = [];
+    let release;
+    const gate = new Promise((res) => (release = res));
+    const PageB = () => h('p', { class: 'b' }, () => data.value ?? 'loading');
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/a', component: () => h('p', { class: 'a' }, 'a') },
+        {
+          path: '/b',
+          component: PageB,
+          loader: ({ to, from, params }) => {
+            seen.push([to, from, params]);
+            return gate.then(() => (data.value = 'ready'));
+          },
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+
+    expect(await r.navigate('/b')).toBe(true); // does NOT wait for the loader
+    await settle();
+    expect(app.target.querySelector('.b').textContent).toBe('loading');
+    release();
+    await settle();
+    expect(app.target.querySelector('.b').textContent).toBe('ready'); // store-driven
+    expect(seen).toEqual([['/b', '/a', {}]]);
+    app.unmount();
+  });
+
+  it('a rejecting loader does not fail the navigation', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/boom',
+          component: () => h('p', { class: 'boom' }, 'boom'),
+          loader: () => Promise.reject(new Error('no data')),
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/boom')).toBe(true);
+    await settle(); // the swallowed rejection must stay swallowed
+    expect(window.location.pathname).toBe('/boom');
+    expect(app.target.querySelector('.boom')).not.toBeNull();
+    app.unmount();
+  });
+
+  it('loaders re-run on traversal like guards', async () => {
+    const { rt, router } = await setup('http://localhost/a');
+    const { h } = rt;
+    let loads = 0;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/a',
+          component: () => h('p', { class: 'a' }, 'a'),
+          loader: () => {
+            loads += 1;
+          },
+        },
+        { path: '/b', component: () => h('p', { class: 'b' }, 'b') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(loads).toBe(1); // boot
+    expect(await r.navigate('/b')).toBe(true);
+    await settle();
+    expect(loads).toBe(1); // /b has no loader
+    history.back();
+    await settle();
+    expect(app.target.querySelector('.a').textContent).toBe('a');
+    expect(loads).toBe(2); // traversal re-ran the target's loader
     app.unmount();
   });
 });

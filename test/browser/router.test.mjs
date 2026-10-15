@@ -218,13 +218,12 @@ import mount from '../../runtime.js';
 import { createRouter, Router, Outlet, Link } from '../../router.js';
 const Home = () => <p class="home">home</p>;
 const Heavy = () => <p class="loaded">heavy-loaded</p>;
-Heavy.preload = function () { window.__loaderRan = true; };
 window.__loaderRan = false;
 window.__guardCalls = [];
 const Layout = () => <div class="layout"><nav><Link to="/" id="link-home">home</Link><Link to="/heavy" id="link-heavy">heavy</Link></nav><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
   { path: '/', component: Home },
-  { path: '/heavy', component: Heavy, guard: function () { window.__guardCalls.push('heavy'); return true; } },
+  { path: '/heavy', component: Heavy, loader: function () { window.__loaderRan = true; }, guard: function () { window.__guardCalls.push('heavy'); return true; } },
 ]}});
 window.__router = router;
 mount(document.getElementById('app'), () => <Router router={router} />);
@@ -525,27 +524,29 @@ describe.skipIf(!available)('router in a real browser', () => {
     }
   });
 
-  it('prefetch() warms a component\'s preload hook', async () => {
+  it('prefetch() warms route loaders and never runs guards', async () => {
     const { base, stop } = await serveApp(HEAVY);
     const view = await openPage(base, '/');
     try {
       expect(await waitText(view, '.home')).toBe('home');
-      await view.evaluate(`window.__router.prefetch('/heavy')`);
+      // B4: a query-string target must still match (and warm) its route.
+      await view.evaluate(`window.__router.prefetch('/heavy?page=2')`);
       expect(await waitFor(view, `window.__loaderRan`)).toBe(true);
-      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('["heavy"]');
+      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('[]');
     } finally {
       view.close();
       await stop();
     }
   });
 
-  it('hovering a Link prefetches its route', async () => {
+  it('hovering a Link prefetches its route loaders without guards', async () => {
     const { base, stop } = await serveApp(HEAVY);
     const view = await openPage(base, '/');
     try {
       expect(await waitText(view, '.home')).toBe('home');
       await view.evaluate(`document.getElementById('link-heavy').dispatchEvent(new Event('mouseenter'))`);
       expect(await waitFor(view, `window.__loaderRan`)).toBe(true);
+      expect(await view.evaluate(`JSON.stringify(window.__guardCalls)`)).toBe('[]');
     } finally {
       view.close();
       await stop();

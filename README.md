@@ -115,8 +115,8 @@ Full walkthrough (server + HTML route + app): [`docs/bun.md`](docs/bun.md).
 
 `bsig/router` is a separate, tree-shakeable entry — a build that never imports
 it leaves it (and its vendored matcher) out of the bundle. Nested layouts,
-params, async guards, and scroll restoration, built on the History API so it
-behaves identically in every browser:
+params, async guards, loaders, and scroll restoration, built on the History
+API so it behaves identically in every browser:
 
 ```tsx
 import mount from 'bsig';

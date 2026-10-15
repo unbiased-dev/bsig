@@ -16,6 +16,20 @@ export type GuardFn = (
   context: GuardContext,
 ) => GuardResult | Promise<GuardResult>;
 
+export interface LoaderContext {
+  to: string;
+  from: string;
+  params: Record<string, string | string[]>;
+}
+
+/**
+ * Route data warm-up. Return value is ignored; must be idempotent and safe to
+ * run on hover. Starts after guards pass on navigation without delaying the
+ * commit (errors are swallowed — write error state to your own store), and
+ * runs best-effort on prefetch.
+ */
+export type LoaderFn = (context: LoaderContext) => unknown;
+
 /** Props every routed component receives. */
 export interface RouteProps {
   params: Record<string, string | string[]>;
@@ -30,6 +44,7 @@ export interface Route {
   component: RouteComponent;
   children?: Route[];
   guard?: GuardFn;
+  loader?: LoaderFn;
 }
 
 export interface MatchedRoute {
@@ -78,6 +93,7 @@ export type RouterInstance = {
   handlePopState(): void;
   boot(): Promise<void>;
   Link: (props: LinkProps) => any;
+  /** Warm matched route loaders (never guards). */
   prefetch(to: string): void;
   isActive(to: string): boolean;
   pathname: Signal<string>;

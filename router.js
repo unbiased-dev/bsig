@@ -86,6 +86,13 @@ export function createRouter(options) {
   const pathname = signal('');
   const matched = signal([]);
 
+  // The matched chain for a pathname, falling back to the not-found route.
+  const matchOf = (target) =>
+    matchTree(options.routes.children ?? [], target, options.routes.path) ??
+    (options.notFound
+      ? [{ route: options.notFound, path: target, base: '', params: {} }]
+      : []);
+
   // The browser's built-in scroll restoration does not fit a client-rendered
   // page: drive it ourselves. Remember the offset we leave each entry at,
   // scroll to top on push/replace, and re-apply the remembered offset on
@@ -114,20 +121,7 @@ export function createRouter(options) {
   };
 
   const render = (target) => {
-    const result = matchTree(
-      options.routes.children ?? [],
-      target,
-      options.routes.path,
-    );
-    if (result) {
-      matched.value = result;
-    } else if (options.notFound) {
-      matched.value = [
-        { route: options.notFound, path: target, base: '', params: {} },
-      ];
-    } else {
-      matched.value = [];
-    }
+    matched.value = matchOf(target);
   };
 
   // The History API has no per-entry keys, so stamp our own onto
@@ -158,12 +152,7 @@ export function createRouter(options) {
     const guards = [];
     if (options.guard) guards.push(options.guard);
     if (options.routes.guard) guards.push(options.routes.guard);
-    const chain =
-      matchTree(options.routes.children ?? [], target, options.routes.path) ??
-      (options.notFound
-        ? [{ route: options.notFound, path: target, base: '', params: {} }]
-        : []);
-    for (const entry of chain) {
+    for (const entry of matchOf(target)) {
       if (entry.route.guard) guards.push(entry.route.guard);
     }
     return guards;
@@ -187,6 +176,24 @@ export function createRouter(options) {
     return null;
   };
 
+  // Loaders warm the app's own data layer; their return values are ignored and
+  // the router keeps no cache. They start after guards pass, in parallel, and
+  // never delay or fail a navigation (errors are swallowed). `async` also
+  // turns a synchronous throw into a rejection so callers' `.catch` sees it.
+  const runLoaders = async (path) => {
+    await Promise.all(
+      matchOf(path)
+        .filter((entry) => entry.route.loader)
+        .map((entry) =>
+          entry.route.loader({
+            to: path,
+            from: pathname.value,
+            params: entry.params,
+          }),
+        ),
+    );
+  };
+
   // Split a target into the pathname matching and guards see and the full
   // same-origin href the address bar shows.
   const split = (to) => {
@@ -199,7 +206,13 @@ export function createRouter(options) {
     if (seen.has(path)) return null;
     seen.add(path);
     const verdict = await runGuards(collectGuards(path), path, pathname.value);
-    if (verdict === null) return { path, href, replace };
+    if (verdict === null) {
+      // Fire-and-forget: start the target's loaders as soon as guards pass,
+      // then commit/render immediately. Loaders warm the app's store; they
+      // never delay the navigation and their rejections are swallowed.
+      runLoaders(path).catch(() => {});
+      return { path, href, replace };
+    }
     if (verdict.type === 'block') return null;
     return resolve(verdict.path, seen, verdict.replace);
   };
@@ -333,21 +346,15 @@ export function createRouter(options) {
 
   const prefetching = new Set();
 
+  // Warm the matched route loaders (never guards). Best-effort: errors are
+  // swallowed and the in-flight Set dedupes repeated hover/focus/pointerdown
+  // bursts. `split` keeps `/path?query` targets matchable (B4).
   const prefetch = (to) => {
     if (prefetching.has(to)) return;
     prefetching.add(to);
-    (async () => {
-      try {
-        await runGuards(collectGuards(to), to, pathname.value);
-      } catch {
-        // best-effort: guards may throw during a warm-up prefetch
-      }
-      const chain =
-        matchTree(options.routes.children ?? [], to, options.routes.path) ?? [];
-      for (const entry of chain) {
-        entry.route.component?.preload?.();
-      }
-    })().finally(() => prefetching.delete(to));
+    runLoaders(split(to).path)
+      .catch(() => {})
+      .finally(() => prefetching.delete(to));
   };
 
   const isActive = (to) => {

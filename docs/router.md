@@ -1,7 +1,7 @@
 # bsig/router
 
-A small, signal-native router for bsig: nested layouts, params, guards, and
-per-entry scroll restoration. It lives in its own module —
+A small, signal-native router for bsig: nested layouts, params, guards,
+loaders, and per-entry scroll restoration. It lives in its own module —
 importing `bsig/router` pulls it in, and a build that never imports it leaves
 it (and its vendored path matcher) out of the bundle entirely.
 
@@ -13,7 +13,7 @@ so blocks and redirects never flicker.
 
 ## 1. Set up routes
 
-A route is `{ path, component, children?, guard? }`. The root route's
+A route is `{ path, component, children?, guard?, loader? }`. The root route's
 `path` is the base and its `component` is the layout. Layouts render
 `<Outlet/>` where the matched child should go.
 
@@ -101,8 +101,8 @@ import { Link } from 'bsig/router';
 ```
 
 `<Link>` sets `href` and `aria-current="page"` when the target is active, and
-prefetches the destination on hover, focus, and pointer-down. Style the active
-state in your components layer:
+prefetches the destination on hover, focus, and pointer-down — warming its
+loaders, not its guards. Style the active state in your components layer:
 
 ```css
 [aria-current='page'] {
@@ -145,7 +145,47 @@ const routes: Route = {
 A boot-time redirect rewrites the address bar (via `replaceState`) rather than
 pushing a new entry — the user never navigated anywhere.
 
-## 5. 404s
+## 5. Loaders
+
+`loader` warms your own data layer for a route. It runs after a navigation's
+guards pass, and may also run on prefetch:
+
+```tsx
+import { signal } from 'bsig';
+
+const user = signal<User | null>(null);
+
+const User = () => (
+  <Show when={user.value} fallback={<p>Loading…</p>}>
+    <h1>{user.value!.name}</h1>
+  </Show>
+);
+
+const routes: Route = {
+  path: '/users/:id',
+  component: User,
+  loader: async ({ params }) => {
+    user.value = await fetchUser(params.id); // write your own store
+  },
+};
+```
+
+- The context is `{ to, from, params }`: the target and current pathnames (no
+  query string) plus the route's matched params.
+- The return value is **ignored** — the router keeps no cache and passes no
+  data to components (there is no `useLoaderData`-style result). Components
+  mount immediately and react to your store as the loader fills it.
+- Loaders start **after guards pass** and run in parallel across the matched
+  chain, but never delay the URL change or the page swap. A rejection never
+  fails a navigation — errors are swallowed, so write error state to your own
+  store.
+- Hovering a `<Link>` (or calling `router.prefetch('/path')`) runs the matched
+  loaders best-effort — **no guards run**.
+- Loaders re-run on every navigation, including back/forward, and can run
+  twice for one destination (prefetch, then navigation). Keep them
+  **idempotent** — rely on HTTP caches or dedupe promises in your data layer.
+
+## 6. 404s
 
 ```tsx
 const routes: Route = { path: '/', component: Layout, children: [/* … */] };
@@ -160,14 +200,15 @@ const notFound: Route = { path: '', component: NotFound };
 | `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `guard?`, `router?`. |
 | `Outlet` | Renders the route matched at this nesting depth. |
 | `Link` | Navigation link with `aria-current` and prefetch. |
-| `createRouter({ routes, notFound?, guard? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
+| `createRouter({ routes, notFound?, guard? })` | Imperative instance: `navigate`, `prefetch` (warms matched loaders, never guards), `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
 | `matchTree(routes, pathname, base)` | Pure matcher; returns the matched chain or `null`. |
-| `Route`, `RouteProps`, `MatchedRoute` | Types. |
+| `Route`, `RouteProps`, `MatchedRoute` | Types (`Route`: `path`, `component`, `children?`, `guard?`, `loader?`). |
 | `GuardFn`, `GuardResult`, `GuardContext` | Guard types. |
+| `LoaderFn`, `LoaderContext` | Loader types. |
 | `RouterOptions`, `NavigateOptions`, `RouterProps`, `RouterInstance`, `LinkProps` | Instance/props types. |
 
 Scroll restoration is managed manually (`history.scrollRestoration =
 'manual'`): new entries scroll to top, and back/forward restore the offset you
 left each entry at in a single jump. Per-entry keys are stamped onto
-`history.state`; back/forward run guards again, and a blocked traversal pins
-the address bar back to the page on screen.
+`history.state`; back/forward run guards (and loaders) again, and a blocked
+traversal pins the address bar back to the page on screen.

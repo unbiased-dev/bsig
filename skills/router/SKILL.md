@@ -1,6 +1,6 @@
 ---
 name: router
-description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), guard hooks, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
+description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), guard and loader hooks, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, fire-and-forget loaders, vendored regexparam matching) so routing code follows the router's conventions.
 ---
 
 # bsig/router
@@ -14,7 +14,8 @@ history handling is built on the History API (`pushState`/`replaceState`, a
 `popstate` listener, and a document-level click interceptor), so it behaves
 identically in every browser — Safari, Firefox, Chromium, WebViews — with no
 Navigation API dependency. Guards run before the URL commits, so blocks and
-redirects never flicker; per-entry scroll keys are stamped onto
+redirects never flicker; route loaders warm your store after guards pass
+without delaying the swap; per-entry scroll keys are stamped onto
 `history.state`.
 
 This is **bsig**, not React and not the older sigwork API: components run once,
@@ -76,7 +77,7 @@ needed.
 - **`router.pathname`** — a reactive signal of the current pathname. Read
   `router.pathname.value` in JSX to stay live.
 - **`router.isActive(to)`** — whether `to` is the active path.
-- **`router.prefetch(to)`** — warm guards + component preload hooks without navigating.
+- **`router.prefetch(to)`** — warm the matched route loaders (never guards) without navigating; best-effort and deduped per target.
 - **`matchTree(routes, pathname, base)`** — pure matcher (chain or `null`).
 
 ## Route config
@@ -87,6 +88,7 @@ interface Route {
   component: (props: { params, route }) => any; // runs once
   children?: Route[];
   guard?: GuardFn;
+  loader?: LoaderFn; // warm your own store; return value ignored
 }
 ```
 
@@ -114,11 +116,21 @@ Hooks may be async.
 - A boot-time redirect rewrites the address bar (`replaceState`) instead of
   pushing — the user never navigated anywhere.
 
-## Prefetch
+## Loaders & prefetch
 
-- `<Link>` prefetches on hover/focus/`pointerdown` (touch): runs guards
-  (verdict ignored) and warms component preload hooks. Best-effort — failures
-  are swallowed.
+`loader({ to, from, params })` warms the app's own store; the return value is
+ignored (no `useLoaderData`, no router cache) and the router passes no data to
+components.
+
+- Starts **after guards pass** on navigation, in parallel across the matched
+  chain, and never delays or fails the commit (fire-and-forget; errors are
+  swallowed — write error state in your store).
+- `<Link>` hover/focus/`pointerdown` and `router.prefetch(to)` run loaders
+  **only — never guards**; best-effort, errors swallowed, in-flight runs
+  deduped per target, query strings stripped (`/x?q=1` still matches).
+- Re-runs on every navigation including traversal, and may run twice
+  (prefetch + navigation): keep loaders **idempotent** (HTTP cache, promise
+  dedupe, or a check-first write).
 
 ## Matching rules
 
@@ -149,8 +161,12 @@ Hooks may be async.
 - **Components run once**; a `:param` change within the same route remounts
   that leaf (the outlet key includes params) rather than re-rendering the
   instance.
-- Not React Router: no loaders, no `useParams`, no nested `<Route>` JSX. Routes
-  are plain objects, params come through props, and layouts render `<Outlet />`.
+- **Loaders never block** — they may run twice (prefetch, then navigation;
+  again on traversal) and start after guards pass. Keep them idempotent and
+  store-driven.
+- Not React Router: no `useLoaderData` (loaders warm your store; their return
+  value is ignored), no `useParams`, no nested `<Route>` JSX. Routes are plain
+  objects, params come through props, and layouts render `<Outlet />`.
 - `bsig/router` is a separate entry point — nothing is pulled into the runtime
   bundle unless imported, so adding routing never taxes non-routed pages.
 
