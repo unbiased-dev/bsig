@@ -116,6 +116,28 @@ describe('router: matchTree', () => {
     );
     expect(chain[0].params.id).toBe('%E0%A4%A');
   });
+
+  it('matches optional params and catch-alls', async () => {
+    const { router } = await setup();
+    const routes = [
+      {
+        path: '/posts',
+        component: () => null,
+        children: [{ path: '/:page?', component: () => null }],
+      },
+      { path: '/files/*', component: () => null },
+    ];
+    const optional = router.matchTree(routes, '/posts', '/');
+    expect(optional.map((m) => m.path)).toEqual(['/posts', '/posts/:page?']);
+    expect(optional[1].params.page).toBeUndefined();
+    const withPage = router.matchTree(routes, '/posts/2', '/');
+    expect(withPage[1].params.page).toBe('2');
+    const wild = router.matchTree(routes, '/files/a/b/c', '/');
+    // regexparam's `*` is one `(.*)` group: a single decoded string, NOT an
+    // array. `docs/router.md` currently says "yields an array" — that is wrong
+    // and step-8 fixes it.
+    expect(wild[0].params['*']).toBe('a/b/c');
+  });
 });
 
 describe('router: boot + render', () => {
