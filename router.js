@@ -84,7 +84,6 @@ const RouteNode = ({ route, depth, params }) => {
 
 export function createRouter(options) {
   const pathname = signal('');
-  const matched = signal([]);
 
   // The matched chain for a pathname, falling back to the not-found route.
   const matchOf = (target) =>
@@ -97,10 +96,10 @@ export function createRouter(options) {
   // page: drive it ourselves. Remember the offset we leave each entry at,
   // scroll to top on push/replace, and re-apply the remembered offset on
   // traversal in a single jump.
-  const history_api = globalThis.history;
+  const history_api = history;
   history_api.scrollRestoration = 'manual';
 
-  const scroll_positions = new Map();
+  const scroll_positions = {};
   let scroll_token = 0;
 
   // One deferred jump: route effects flush in a microtask, so the destination
@@ -120,16 +119,12 @@ export function createRouter(options) {
     });
   };
 
-  const render = (target) => {
-    matched.value = matchOf(target);
-  };
-
   // The History API has no per-entry keys, so stamp our own onto
   // `history.state`. Keys drive scroll restoration; entries the router did not
   // create are tracked with memory-only keys (see `traverse`).
   const STATE_KEY = 'bsig:key';
   let key_seq = 0;
-  const new_key = () => `k${++key_seq}`;
+  const new_key = () => 'k' + ++key_seq;
   let current_key = null;
   let current_href = '/';
   // Guards are async: a slow navigation superseded by a newer one must not
@@ -163,15 +158,9 @@ export function createRouter(options) {
       guards.map((guard) => guard({ to, from })),
     );
     for (const result of results) {
-      if (result === false) return { type: 'block' };
-      if (typeof result === 'string')
-        return { type: 'redirect', path: result, replace: false };
-      if (result && typeof result === 'object')
-        return {
-          type: 'redirect',
-          path: result.path,
-          replace: !!result.replace,
-        };
+      if (result === false) return 0;
+      if (typeof result === 'string') return { path: result };
+      if (result && typeof result === 'object') return result;
     }
     return null;
   };
@@ -201,51 +190,42 @@ export function createRouter(options) {
     return { path: url.pathname, href: url.pathname + url.search };
   };
 
+  const current = () => split(location.href);
+
   const resolve = async (to, seen, replace) => {
     const { path, href } = split(to);
     if (seen.has(path)) return null;
     seen.add(path);
     const verdict = await runGuards(collectGuards(path), path, pathname.value);
-    if (verdict === null) {
-      // Fire-and-forget: start the target's loaders as soon as guards pass,
-      // then commit/render immediately. Loaders warm the app's store; they
-      // never delay the navigation and their rejections are swallowed.
-      runLoaders(path).catch(() => {});
-      return { path, href, replace };
-    }
-    if (verdict.type === 'block') return null;
-    return resolve(verdict.path, seen, verdict.replace);
+    // A guard block is encoded as the internal `0` sentinel; `null` means no
+    // verdict (proceed) and any object is a redirect descriptor.
+    if (verdict === 0) return null;
+    if (verdict) return resolve(verdict.path, seen, !!verdict.replace);
+    runLoaders(path).catch(() => {});
+    return { path, href, replace };
   };
 
-  const apply = (target) => {
-    render(target.path);
-    pathname.value = target.path;
+  const apply = (path) => {
+    pathname.value = path;
   };
 
-  const commit_push = (target) => {
-    scroll_positions.set(current_key, window.scrollY);
+  const commit = ({ path, href, replace }) => {
+    scroll_positions[current_key] = window.scrollY;
     const key = new_key();
-    history_api.pushState({ [STATE_KEY]: key }, '', target.href);
+    history_api[replace ? 'replaceState' : 'pushState'](
+      { [STATE_KEY]: key },
+      '',
+      href,
+    );
     current_key = key;
-    current_href = target.href;
-    apply(target);
-    restore_scroll(0);
-  };
-
-  const commit_replace = (target) => {
-    scroll_positions.set(current_key, window.scrollY);
-    const key = new_key();
-    history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
-    // Boot always runs first, so there is an entry to rewrite.
-    current_key = key;
-    current_href = target.href;
-    apply(target);
+    current_href = href;
+    apply(path);
     restore_scroll(0);
   };
 
   const boot = async () => {
     const token = ++nav_token;
-    const here = split(window.location.pathname + window.location.search);
+    const here = current();
     let key = entry_key();
     if (!key) {
       key = new_key();
@@ -263,7 +243,7 @@ export function createRouter(options) {
       history_api.replaceState(state_with_key(key), '', target.href);
       current_href = target.href;
     }
-    apply(target);
+    apply(target.path);
   };
 
   const navigate = async (to, { replace = false } = {}) => {
@@ -271,78 +251,79 @@ export function createRouter(options) {
     // A throwing guard fails the navigation, like a block.
     const target = await resolve(to, new Set(), replace).catch(() => null);
     if (token !== nav_token || target === null) return false;
-    if (target.replace) commit_replace(target);
-    else commit_push(target);
+    commit(target);
     return true;
   };
 
   const traverse = async () => {
     const token = ++nav_token;
-    const here = split(window.location.pathname + window.location.search);
-    let key = entry_key();
-    if (!key) {
-      // An entry that predates the router (or was pushed outside it): track it
-      // with a memory-only key rather than stamping state onto an entry the
-      // router does not own. Adopted entries restore scroll-to-top; entries the
-      // router creates carry their keys in `history.state`.
-      key = new_key();
-    }
+    const here = current();
+    // An entry that predates the router (or was pushed outside it): track it
+    // with a memory-only key rather than stamping state onto an entry the
+    // router does not own. Adopted entries restore scroll-to-top; router
+    // entries carry their keys in `history.state`.
+    const key = entry_key() ?? new_key();
     const target = await resolve(here.path, new Set(), false).catch(() => null);
     if (token !== nav_token) return;
     if (target === null) {
       // Blocked after the browser already moved: pin the URL back to the page
-      // on screen. Display and address bar agree again; the entry keeps its
-      // URL, so a later visit re-runs guards.
+      // on screen; the entry keeps its URL, so a later visit re-runs guards.
       history_api.replaceState(state_with_key(key), '', current_href);
       return;
     }
+    scroll_positions[current_key] = window.scrollY;
+    current_key = key;
     if (target.href !== here.href) {
       // A guard redirected the traversal: rewrite the entry in place. The
-      // rewritten entry has no remembered offset (any saved one belongs to the
-      // pre-redirect page).
-      scroll_positions.set(current_key, window.scrollY);
-      scroll_positions.delete(key);
+      // rewritten entry has no remembered offset (any saved one belongs to
+      // the pre-redirect page).
+      delete scroll_positions[key];
       history_api.replaceState(state_with_key(key), '', target.href);
-      current_key = key;
       current_href = target.href;
-      apply(target);
+      apply(target.path);
       restore_scroll(0);
       return;
     }
-    scroll_positions.set(current_key, window.scrollY);
-    current_key = key;
     current_href = here.href;
-    apply(target);
-    restore_scroll(scroll_positions.get(key) ?? 0);
+    apply(target.path);
+    restore_scroll(scroll_positions[key] ?? 0);
   };
 
   const handleClick = (event) => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const origin = event.target;
-    const anchor =
-      origin && typeof origin.closest === 'function' ? origin.closest('a[href]') : null;
-    if (!anchor) return;
-    if (anchor.target && anchor.target !== '_self') return;
-    if (anchor.hasAttribute('download')) return;
+    if (
+      event.defaultPrevented ||
+      event.button ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    const anchor = event.target?.closest?.('a[href]');
+    if (
+      !anchor ||
+      (anchor.target && anchor.target !== '_self') ||
+      anchor.hasAttribute('download')
+    )
+      return;
     let url;
     try {
-      url = new URL(anchor.getAttribute('href'), window.location.href);
+      // `anchor.href` is already resolved against the document base (honors
+      // `<base href>`); an unparseable href stays as-is and throws here.
+      url = new URL(anchor.href, location.href);
     } catch {
       return;
     }
-    if (url.origin !== window.location.origin) return;
-    const here = window.location;
+    if (url.origin !== location.origin) return;
     // Same-page targets (hash links, re-clicks) stay native: the browser
     // scrolls without history churn.
-    if (url.pathname === here.pathname && url.search === here.search) return;
+    if (url.pathname === location.pathname && url.search === location.search)
+      return;
     event.preventDefault();
-    void navigate(url.pathname + url.search);
+    navigate(url.pathname + url.search);
   };
 
-  const handlePopState = () => {
-    void traverse();
-  };
+  const handlePopState = () => traverse();
 
   const prefetching = new Set();
 
@@ -401,19 +382,20 @@ export function createRouter(options) {
 
   const Outlet = () => {
     const depth = inject(DEPTH, 0) ?? 0;
-    let cached = [];
+    let key, node;
     return () => {
-      const m = matched.value[depth];
+      const m = matchOf(pathname.value)[depth];
       if (!m) return null;
-      const key = `${m.path}|${JSON.stringify(m.params)}`;
-      let node = cached.find(([k]) => k === key)?.[1];
-      if (!node) {
+      // Keep the node when the route + params are unchanged (e.g. a
+      // query-only navigation) so the page does not remount.
+      const next = `${m.path}|${JSON.stringify(m.params)}`;
+      if (next !== key) {
+        key = next;
         node = h(RouteNode, {
           route: m.route,
           depth: depth + 1,
           params: m.params,
         });
-        cached = [[key, node]];
       }
       return node;
     };
