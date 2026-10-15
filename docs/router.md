@@ -167,7 +167,7 @@ const notFound: Route = { path: '', component: NotFound };
 | `RouterOptions`, `NavigateOptions`, `RouterProps`, `RouterInstance`, `LinkProps` | Instance/props types. |
 
 Scroll restoration is managed manually (`history.scrollRestoration =
-'manual'`): new entries scroll to top, back/forward restore the offset you left
-each entry at, and manual scrolling during restore cancels it. Per-entry keys
-are stamped onto `history.state`; back/forward run guards again, and a blocked
-traversal pins the address bar back to the page on screen.
+'manual'`): new entries scroll to top, and back/forward restore the offset you
+left each entry at in a single jump. Per-entry keys are stamped onto
+`history.state`; back/forward run guards again, and a blocked traversal pins
+the address bar back to the page on screen.

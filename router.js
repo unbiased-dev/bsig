@@ -80,44 +80,31 @@ export function createRouter(options) {
   const pathname = signal('');
   const matched = signal([]);
 
-  // The browser's built-in scroll restoration races the async route render: a
-  // lazy page mounts a short loading placeholder first, so the restored offset
-  // gets clamped and a fresh entry can keep the previous page's scroll. Drive
-  // it ourselves: remember the offset we leave each entry at, scroll to top on
-  // push/replace, and re-apply the remembered offset on traversal until the
-  // page is tall enough to hold it.
+  // The browser's built-in scroll restoration does not fit a client-rendered
+  // page: drive it ourselves. Remember the offset we leave each entry at,
+  // scroll to top on push/replace, and re-apply the remembered offset on
+  // traversal in a single jump.
   const history_api = globalThis.history;
   history_api.scrollRestoration = 'manual';
 
   const scroll_positions = new Map();
   let scroll_token = 0;
 
+  // One deferred jump: route effects flush in a microtask, so the destination
+  // page must be committed before a non-zero offset can be applied without
+  // clamping. The scroll microtask is queued after the flush microtask (FIFO),
+  // so it runs after the commit and before paint. Top scrolls are immediate;
+  // the token cancels a pending restore when another navigation wins (e.g. a
+  // click while back/forward is in flight).
   const restore_scroll = (target) => {
     const token = ++scroll_token;
     if (target <= 0) {
       window.scrollTo(0, 0);
       return;
     }
-    // A manual scroll means the user took over — stop chasing the old offset.
-    const abort = new AbortController();
-    const stop = () => abort.abort();
-    addEventListener('wheel', stop, { passive: true, signal: abort.signal });
-    addEventListener('touchstart', stop, {
-      passive: true,
-      signal: abort.signal,
+    queueMicrotask(() => {
+      if (scroll_token === token) window.scrollTo(0, target);
     });
-    addEventListener('keydown', stop, { signal: abort.signal });
-    let frames = 0;
-    const step = () => {
-      if (abort.signal.aborted || scroll_token !== token) return;
-      window.scrollTo(0, target);
-      if (window.scrollY >= target - 1 || ++frames >= 60) {
-        abort.abort();
-        return;
-      }
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
   };
 
   const render = (target) => {

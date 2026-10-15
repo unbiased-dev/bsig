@@ -613,6 +613,29 @@ describe.skipIf(!available)('router in a real browser', () => {
     }
   });
 
+  it('back() restores the scroll offset of the previous page in one jump', async () => {
+    const { base, stop } = await serveApp(TALL);
+    const view = await openPage(base, '/');
+    try {
+      expect(await waitText(view, '.home')).toBe('home');
+      // Leave / scrolled down; the push to /about must go to the top.
+      await view.evaluate(`window.scrollTo(0, 800)`);
+      await waitFor(view, `window.scrollY > 700`);
+      expect(await view.evaluate(`window.__router.navigate('/about')`)).toBe(true);
+      expect(await waitText(view, '.about')).toBe('about');
+      expect(await view.evaluate(`window.scrollY`)).toBe(0);
+      await view.evaluate(`window.scrollTo(0, 500)`);
+      await waitFor(view, `window.scrollY > 400`);
+      await view.evaluate(`history.back()`);
+      expect(await waitText(view, '.home')).toBe('home');
+      // One jump restores the offset we left / at.
+      expect(await waitFor(view, `window.scrollY > 700`)).toBe(true);
+    } finally {
+      view.close();
+      await stop();
+    }
+  });
+
   it('kitchensink: nested params, guards, links, and notFound together', async () => {
     const { base, stop } = await serveApp(KITCHEN);
     const view = await openPage(base, '/');

@@ -1079,7 +1079,7 @@ describe('router: lifecycle', () => {
 });
 
 describe('router: scroll restoration', () => {
-  it('push scrolls to top and traversal restores the saved offset', async () => {
+  it('push scrolls to top and traversal restores the offset in one jump', async () => {
     const { rt, router } = await setup('http://localhost/a');
     const { h } = rt;
     const routes = {
@@ -1095,63 +1095,45 @@ describe('router: scroll restoration', () => {
     await settle();
 
     // A controllable scroll environment: scrollY is a mutable value and
-    // animation frames are queued so each step can be inspected.
+    // scrollTo records calls. No rAF mock is needed — a restore is one
+    // `queueMicrotask`, so `settle()` (setTimeout) has already flushed it.
+    // The fake scrollTo does not move `scrollY`, so set it by hand where the
+    // test needs a specific starting offset.
     let scrollY = 0;
     Object.defineProperty(window, 'scrollY', {
       configurable: true,
       get: () => scrollY,
     });
     const origScrollTo = window.scrollTo;
-    const scrollCalls = [];
-    window.scrollTo = (x, y) => scrollCalls.push([x, y]);
-    const origRaf = globalThis.requestAnimationFrame;
-    const rafQueue = [];
-    globalThis.requestAnimationFrame = (fn) => rafQueue.push(fn);
-    const frame = () => rafQueue.shift()?.();
+    const calls = [];
+    window.scrollTo = (x, y) => calls.push([x, y]);
 
     try {
-      // Leave /a while scrolled down: the offset is remembered.
+      // Leave /a while scrolled down: the offset is remembered, push goes top.
       scrollY = 100;
       await r.navigate('/b');
       expect(app.target.querySelector('.b').textContent).toBe('b');
-      expect(scrollCalls).toContainEqual([0, 0]); // push scrolls to top
+      expect(calls.at(-1)).toEqual([0, 0]);
 
-      // Traverse back with no room to restore: the chase runs until it gives
-      // up after ~1s of frames.
+      // Back to /a restores in one jump; the scroll microtask has run by the
+      // time settle() resolves.
       scrollY = 0;
       history.back();
       await settle();
       expect(app.target.querySelector('.a').textContent).toBe('a');
-      expect(rafQueue.length).toBe(1);
-      for (let i = 0; i < 60; i++) frame();
-      expect(rafQueue.length).toBe(0);
+      expect(calls.at(-1)).toEqual([0, 100]);
+      expect(calls.length).toBe(2); // one jump, no chase
 
-      // Back to /b (sync scroll to top), then back to /a with room: one step
-      // meets the remembered offset and stops.
-      scrollY = 100;
+      // Forward to /b: its remembered offset was 0 (left at top).
+      scrollY = 0;
       history.forward();
       await settle();
       expect(app.target.querySelector('.b').textContent).toBe('b');
-      history.back();
-      await settle();
-      expect(app.target.querySelector('.a').textContent).toBe('a');
-      expect(rafQueue.length).toBe(1);
-      frame();
-      expect(scrollCalls).toContainEqual([0, 100]);
-      expect(rafQueue.length).toBe(0);
-
-      // A manual scroll aborts an in-flight restore: the queued step no-ops.
-      scrollY = 0;
-      history.forward();
-      await settle();
-      expect(rafQueue.length).toBe(1);
-      window.dispatchEvent(new Event('wheel'));
-      frame();
-      expect(rafQueue.length).toBe(0);
+      expect(calls.at(-1)).toEqual([0, 0]);
+      expect(calls.length).toBe(3);
     } finally {
       delete window.scrollY;
       window.scrollTo = origScrollTo;
-      globalThis.requestAnimationFrame = origRaf;
       app.unmount();
     }
   });
