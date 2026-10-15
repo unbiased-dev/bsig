@@ -1,0 +1,14 @@
+[test]
+# happy-dom globals (window/document/Event/…) are installed before every test
+# file. See test/setup.ts.
+preload = ["./test/setup.ts"]
+# Coverage is opt-in (script `test:coverage`) so the default run stays fast.
+coverageReporter = ["text", "lcov"]
+coverageDir = "./coverage"
+coverageSkipTestFiles = true
+# Keep the report on product code: drop the harness and vendored third-party.
+coveragePathIgnorePatterns = ["test/**", "vendor/**"]
+# Fail the run if a covered file slips below this. Lines are held tighter than
+# functions because untested branches (scroll restoration, guards) are expected,
+# but whole functions going dark is not.
+coverageThreshold = { lines = 0.85, functions = 0.8 }

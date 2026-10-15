@@ -5,6 +5,27 @@ GitHub by tag (`npm install github:unbiased-dev/bsig#vX.Y.Z`), so **the tag is
 the release**; versions below track the tagged releases. Semver-ish: **minor**
 for new capability, **patch** for fixes.
 
+## Unreleased
+
+Tooling only — no runtime or API changes.
+
+- **Test suite moved to Bun.** `bun test` replaces `node --test`; assertions use
+  `bun:test`'s `expect`, the DOM is **happy-dom** (registered by `test/setup.ts`
+  via `bunfig.toml`), and Node APIs in tests gave way to `Bun.file`/`Bun.write`,
+  `import.meta.dir`, `Bun.$`, and `Bun.build` (esbuild dropped).
+- **Coverage and reporting.** `bun run test:coverage` emits `text` + `lcov`
+  (into `coverage/`); `bun run test:ci` also writes a JUnit `junit.xml`.
+- **Real-browser tests via `Bun.WebView`** (no Playwright): `bun run
+  test:browser` boots the runtime in a real browser and drives native clicks.
+  They are opt-in and skipped in the default run.
+- **100% coverage.** Every shipped module (`runtime`, `router`, `auth`, the
+  JSX runtimes, and the plugins) is fully covered by `% Funcs` and `% Lines`;
+  `bunfig.toml` keeps a floor so the harness cannot rot.
+- **Typecheck.** `bun run typecheck` runs `tsc` (root `tsconfig.json`, with
+  `typescript` + `@types/bun` dev-deps) over the public `.d.ts` and the
+  TypeScript test harness.
+- `package-lock.json` replaced by `bun.lock`.
+
 ## v0.6.2 — 2026-10-14
 
 Two consumer-reported fixes to `bsig/auth`:

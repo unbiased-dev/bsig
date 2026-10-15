@@ -1,15 +1,16 @@
 {
   "name": "bsig",
   "version": "0.6.2",
-  "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
-  "type": "module",
-  "bin": {
-    "bsig-skill": "./skills/install.mjs",
-    "bsig-router-skill": "./skills/install-router.mjs",
-    "bsig-auth-skill": "./skills/install-auth.mjs"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unbiased-dev/bsig.git"
   },
   "main": "./runtime.js",
-  "types": "./runtime.d.ts",
+  "dependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "@babel/plugin-transform-typescript": "7.29.9"
+  },
   "exports": {
     ".": {
       "types": "./runtime.d.ts",
@@ -48,6 +49,12 @@
     },
     "./package.json": "./package.json"
   },
+  "bin": {
+    "bsig-skill": "./skills/install.mjs",
+    "bsig-router-skill": "./skills/install-router.mjs",
+    "bsig-auth-skill": "./skills/install-auth.mjs"
+  },
+  "description": "Tiny signal-based reactive UI library with React-like JSX. Fine-grained updates, no virtual DOM.",
   "files": [
     "runtime.js",
     "runtime.d.ts",
@@ -64,23 +71,23 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "sideEffects": false,
-  "scripts": {
-    "test": "node --test test/*.test.mjs"
-  },
-  "dependencies": {
-    "@babel/core": "7.29.7",
-    "@babel/plugin-transform-react-jsx": "7.29.7",
-    "@babel/plugin-transform-typescript": "7.29.9"
-  },
-  "devDependencies": {
-    "esbuild": "0.21.5",
-    "jsdom": "24.1.3"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/unbiased-dev/bsig.git"
-  },
   "homepage": "https://github.com/unbiased-dev/bsig",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:ci": "bun test --coverage --reporter=junit --reporter-outfile=./junit.xml",
+    "test:browser": "BUN_BSIG_BROWSER=1 bun test test/browser",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "types": "./runtime.d.ts",
+  "devDependencies": {
+    "@happy-dom/global-registrator": "21.0.1",
+    "@types/bun": "1.4.3",
+    "happy-dom": "21.0.1",
+    "typescript": "5.4.5"
+  }
 }

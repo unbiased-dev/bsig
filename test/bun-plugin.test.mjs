@@ -1,14 +1,7 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { JSDOM } from 'jsdom';
+import { describe, it, expect } from 'bun:test';
+import { $ } from 'bun';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.join(here, '..');
+const repo = `${import.meta.dir}/..`;
 const plugin = (await import('../plugin/bun.js')).default;
 
 const collect = () => {
@@ -29,99 +22,83 @@ mount(document.getElementById('app')!, App);
 
 describe('bun plugin', () => {
   it('exposes a BunPlugin-shaped object', () => {
-    assert.equal(plugin.name, 'bsig');
-    assert.equal(typeof plugin.setup, 'function');
+    expect(plugin.name).toBe('bsig');
+    expect(typeof plugin.setup).toBe('function');
   });
 
   it('thunks .tsx dynamics and injects the h import', async () => {
     const { build, hooks } = collect();
     plugin.setup(build);
-    assert.equal(hooks.length, 1);
-    assert.ok(hooks[0].opts.filter.test('App.tsx'));
-    assert.ok(hooks[0].opts.filter.test('App.jsx'));
-    assert.ok(!hooks[0].opts.filter.test('App.ts'));
+    expect(hooks.length).toBe(1);
+    expect(hooks[0].opts.filter.test('App.tsx')).toBe(true);
+    expect(hooks[0].opts.filter.test('App.jsx')).toBe(true);
+    expect(hooks[0].opts.filter.test('App.ts')).toBe(false);
 
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsig-bun-'));
-    const file = path.join(dir, 'App.tsx');
-    fs.writeFileSync(file, COUNTER);
-    const out = await hooks[0].cb({ path: file });
-    assert.equal(out.loader, 'tsx');
-    assert.match(out.contents, /\(\) => count\.value/);
-    assert.match(out.contents, /import \{ h \} from "bsig"/);
-    fs.rmSync(dir, { recursive: true });
+    const file = `${import.meta.dir}/__bun_plugin_App.tsx`;
+    await Bun.write(file, COUNTER);
+    try {
+      const out = await hooks[0].cb({ path: file });
+      expect(out.loader).toBe('tsx');
+      expect(out.contents).toMatch(/\(\) => count\.value/);
+      expect(out.contents).toMatch(/import \{ h \} from "bsig"/);
+    } finally {
+      await Bun.file(file).delete();
+    }
   });
 
   it('passes node_modules and JSX-free files through untouched', async () => {
     const { build, hooks } = collect();
     plugin.setup(build);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsig-bun-'));
-    const vendored = path.join(dir, 'node_modules', 'x');
-    fs.mkdirSync(vendored, { recursive: true });
-    const vfile = path.join(vendored, 'V.tsx');
-    fs.writeFileSync(vfile, COUNTER);
-    const vout = await hooks[0].cb({ path: vfile });
-    assert.equal(vout.contents, COUNTER);
-    const plain = path.join(dir, 'P.tsx');
-    fs.writeFileSync(plain, 'export const a: number = 1;\n');
-    const pout = await hooks[0].cb({ path: plain });
-    assert.equal(pout.contents, 'export const a: number = 1;\n');
-    fs.rmSync(dir, { recursive: true });
+    const vendored = `${import.meta.dir}/__bun_plugin_nm/node_modules/x/V.tsx`;
+    const plain = `${import.meta.dir}/__bun_plugin_plain/P.tsx`;
+    await Bun.write(vendored, COUNTER);
+    await Bun.write(plain, 'export const a: number = 1;\n');
+    try {
+      const vout = await hooks[0].cb({ path: vendored });
+      expect(vout.contents).toBe(COUNTER);
+      const pout = await hooks[0].cb({ path: plain });
+      expect(pout.contents).toBe('export const a: number = 1;\n');
+    } finally {
+      await $`rm -rf ${import.meta.dir}/__bun_plugin_nm ${import.meta.dir}/__bun_plugin_plain`.quiet();
+    }
   });
 
-  it('end-to-end: Bun.build + plugin stays reactive after click', async (t) => {
-    let hasBun = true;
-    try {
-      execFileSync('bun', ['--version'], { stdio: 'ignore' });
-    } catch {
-      hasBun = false;
-    }
-    if (!hasBun) {
-      t.skip('bun binary not available');
-      return;
-    }
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bsig-bun-e2e-'));
-    try {
-      // 'bsig' must resolve from the fixture: symlink the repo as the package.
-      fs.mkdirSync(path.join(dir, 'node_modules'));
-      fs.symlinkSync(repo, path.join(dir, 'node_modules', 'bsig'), 'dir');
-      fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
+  it('end-to-end: Bun.build + plugin stays reactive after click', async () => {
+    const dir = `${import.meta.dir}/__bun_e2e`;
+    await $`mkdir -p ${dir}/node_modules`.quiet();
+    await $`ln -sfn ${repo} ${dir}/node_modules/bsig`.quiet();
+    await Bun.write(
+      `${dir}/tsconfig.json`,
+      JSON.stringify({
         compilerOptions: {
           jsx: 'react-jsx',
           jsxImportSource: 'bsig',
           lib: ['ES2022', 'DOM'],
         },
-      }));
-      fs.writeFileSync(path.join(dir, 'app.tsx'), COUNTER);
-      fs.writeFileSync(path.join(dir, 'build.mjs'), `
-import plugin from ${JSON.stringify(path.join(repo, 'plugin', 'bun.js'))};
-const out = await Bun.build({ entrypoints: ['./app.tsx'], plugins: [plugin] });
-if (!out.success) { console.error(out.logs); process.exit(1); }
-await Bun.write('./bundle.js', out.outputs[0]);
-`);
-      execFileSync('bun', ['build.mjs'], { cwd: dir, stdio: 'pipe' });
-      const code = fs.readFileSync(path.join(dir, 'bundle.js'), 'utf8');
-      assert.match(code, /\(\) => count\.value/);
+      }),
+    );
+    await Bun.write(`${dir}/app.tsx`, COUNTER);
+    try {
+      // 'bsig' resolves through the fixture's symlinked node_modules.
+      const out = await Bun.build({
+        entrypoints: [`${dir}/app.tsx`],
+        plugins: [plugin],
+        format: 'esm',
+      });
+      expect(out.success).toBe(true);
+      const code = await out.outputs[0].text();
+      expect(code).toMatch(/\(\) => count\.value/);
 
-      const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', { pretendToBeVisual: true });
-      globalThis.window = dom.window;
-      globalThis.document = dom.window.document;
-      globalThis.Node = dom.window.Node;
-      globalThis.HTMLUnknownElement = dom.window.HTMLUnknownElement;
-      globalThis.MutationObserver = dom.window.MutationObserver;
+      document.body.innerHTML = '<div id="app"></div>';
       (0, eval)(code);
       await new Promise((r) => setTimeout(r, 0));
-      const doc = dom.window.document;
-      assert.match(doc.getElementById('app').textContent, /Count: 0/);
-      doc.querySelector('button').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+      const app = document.getElementById('app');
+      expect(app.textContent).toMatch(/Count: 0/);
+      app.querySelector('button').dispatchEvent(new Event('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 0));
-      assert.match(doc.getElementById('app').textContent, /Count: 1/);
+      expect(app.textContent).toMatch(/Count: 1/);
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-      delete globalThis.window;
-      delete globalThis.document;
-      delete globalThis.Node;
-      delete globalThis.HTMLUnknownElement;
-      delete globalThis.MutationObserver;
+      await $`rm -rf ${dir}`.quiet();
     }
   });
 });

@@ -38,7 +38,7 @@ case, it belongs in an opt-in entry — or not at all.
 | `auth.js` / `auth.d.ts` | Opt-in `bsig/auth`: zero-dependency better-auth client (sessions, email sign-in/up/out, refresh triggers). |
 | `vendor/` | Vendored third-party source + license. |
 | `skills/` | Agent skills and installers (`bsig-skill`, `bsig-router-skill`, `bsig-auth-skill`). |
-| `test/` | `node:test` + jsdom, plus real-transform and tree-shake guards. |
+| `test/` | `bun test` + happy-dom, real-transform and tree-shake guards, opt-in `Bun.WebView` browser tests. |
 | `demo/` | Vite app exercising the runtime; also `src/typecheck/*.tsx` smoke files. |
 | `docs/` | User guides (repo-only, not published to npm). |
 | `bench/` | Local benchmarks (gitignored). |
@@ -94,12 +94,26 @@ case, it belongs in an opt-in entry — or not at all.
 
 ## Testing
 
-- `npm test` runs `node --test test/*.test.mjs`.
-- Tests use jsdom; set globals, then flush with `setTimeout(0)`. Reset global
-  state between tests (each test builds its own DOM).
+- `bun test` runs the suite (Bun's built-in runner; config in `bunfig.toml`).
+  `bun run test:coverage` adds `text` + `lcov` coverage (`coverage/`), and
+  `bun run test:ci` writes a JUnit report (`junit.xml`) as well.
+- `bun run typecheck` runs `tsc --noEmit` from the root `tsconfig.json` over the
+  public `.d.ts` files and the TypeScript test harness (`test/*.ts`, e.g.
+  `helpers.ts`/`setup.ts`). Test bodies are `.mjs` and are not type-checked;
+  new harness types belong in `helpers.ts`.
+- The DOM is **happy-dom**, registered globally by `test/setup.ts` and preloaded
+  for every file — no per-file jsdom boilerplate. Tests flush with
+  `setTimeout(0)`; `test/setup.ts` resets `document.body` between tests.
+- Shared helpers live in `test/helpers.ts` (a Navigation API mock and a
+  `Bun.build`-based `bundle()`). Node APIs are avoided in tests; use `Bun.file`/
+  `Bun.write`, `import.meta.dir`, `Bun.$`, and `Bun.build` instead.
 - Cover unit behavior, the **real transform chain** (`test/tsx-chain.test.mjs`),
   tree-shaking, and lifecycle/cleanup edge cases. Runtime cleanup changes
   should add a regression to `test/runtime2.test.mjs`.
+- Real-browser tests (`test/browser/`) use the built-in `Bun.WebView` instead of
+  Playwright and are **opt-in**: `bun run test:browser`. They skip unless
+  `BUN_BSIG_BROWSER=1` and a browser can be spawned, so the default run stays
+  fast.
 - Keep the demo honest: `cd demo && npm run typecheck && npm run build`.
 
 ## Docs and skills
@@ -120,11 +134,11 @@ Release notes are kept in the repo in [`CHANGELOG.md`](CHANGELOG.md).
 
 1. Make sure `main` is green:
    ```sh
-   npm test
+   bun test
    (cd demo && npm run typecheck && npm run build)
    ```
-2. Bump `"version"` in `package.json`, then `npm install` to sync
-   `package-lock.json`.
+2. Bump `"version"` in `package.json`, then `bun install` to sync
+   `bun.lock`.
 3. Bump the install pins everywhere:
    ```sh
    grep -rn "#v0\." README.md docs skills
@@ -156,7 +170,8 @@ package.
 
 ## Definition of done
 
-- [ ] `npm test` green, including new tests for new behavior.
+- [ ] `bun test` green, including new tests for new behavior.
+- [ ] `bun run typecheck` green (public `.d.ts` + TS test harness).
 - [ ] Demo typechecks/builds if the runtime or plugin changed.
 - [ ] Runtime stayed tiny; new surface is opt-in and tree-shakeable.
 - [ ] `.d.ts` types updated and accurate (no dependency on a too-new TS DOM lib).

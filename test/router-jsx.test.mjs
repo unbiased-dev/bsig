@@ -1,135 +1,31 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
-import { JSDOM } from 'jsdom';
+import { describe, it, expect } from 'bun:test';
+import { bundle, settle, useNavigation } from './helpers.ts';
 
 // End-to-end through the real JSX transform the bundler uses, against the real
 // router. The router's own unit tests pass props to `h()` directly, so they
 // never exercise the plugin's auto-thunking; these do. They reproduce the three
 // consumer-reported failures: thunked `<Router>` config props, a fragment layout
 // root, and `<Router>` mounted conditionally through `<Show>`.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(path.join(here, '..', 'package.json'));
-const esbuild = require('esbuild');
 const plugin = (await import('../plugin/bsig-jsx.js')).default();
-
-const flush = () => new Promise((r) => setTimeout(r, 0));
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await flush();
-};
-
-// Minimal Navigation API mock: dispatches `navigate`, resolves committed, and
-// runs the intercepted precommit/handler like a real push.
-function makeNavigation(win) {
-  const listeners = new Set();
-  let seq = 0;
-  return {
-    currentEntry: { key: 'entry-0' },
-    addEventListener(type, fn) {
-      if (type === 'navigate') listeners.add(fn);
-    },
-    removeEventListener(type, fn) {
-      if (type === 'navigate') listeners.delete(fn);
-    },
-    navigate(url, opts = {}) {
-      const abs = new URL(url, win.location.href);
-      let intercepted = null;
-      const ev = {
-        canIntercept: true,
-        hashChange: false,
-        downloadRequest: null,
-        formData: null,
-        navigationType: opts.history === 'traverse' ? 'traverse' : 'push',
-        destination: { url: abs.href, key: 'entry-' + ++seq },
-        signal: new AbortController().signal,
-        intercept(h) {
-          intercepted = h;
-        },
-      };
-      let resolve_committed, reject_committed, resolve_finished;
-      const committed = new Promise((res, rej) => {
-        resolve_committed = res;
-        reject_committed = rej;
-      });
-      const finished = new Promise((res) => {
-        resolve_finished = res;
-      });
-      (async () => {
-        for (const fn of [...listeners]) fn(ev);
-        try {
-          if (intercepted?.precommitHandler)
-            await intercepted.precommitHandler({
-              redirect(p) {
-                win.history.replaceState(null, '', p);
-              },
-            });
-          win.history.pushState(null, '', abs.pathname + abs.search);
-          resolve_committed();
-          if (intercepted?.handler) intercepted.handler();
-        } catch (err) {
-          reject_committed(err);
-        } finally {
-          resolve_finished();
-        }
-      })();
-      return { committed, finished };
-    },
-  };
-}
-
-function setupDom(url) {
-  const dom = new JSDOM(
-    '<!doctype html><html><body><div id="app"></div></body></html>',
-    { pretendToBeVisual: true, url },
-  );
-  globalThis.window = dom.window;
-  globalThis.document = dom.window.document;
-  globalThis.Node = dom.window.Node;
-  globalThis.HTMLUnknownElement = dom.window.HTMLUnknownElement;
-  globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(
-    dom.window,
-  );
-  globalThis.history = dom.window.history;
-  globalThis.addEventListener = dom.window.addEventListener.bind(dom.window);
-  globalThis.removeEventListener = dom.window.removeEventListener.bind(
-    dom.window,
-  );
-  dom.window.scrollTo = () => {};
-  dom.window.navigation = makeNavigation(dom.window);
-  return dom;
-}
 
 let counter = 0;
 async function run(src, url) {
-  const dom = setupDom(url);
-  const file = path.join(here, `__router_jsx_${counter++}.tsx`);
-  const out = await plugin.transform(src, file);
-  const bundled = path.join(here, `__router_jsx_${counter++}.mjs`);
-  fs.writeFileSync(
-    bundled,
+  useNavigation(url);
+  document.body.innerHTML = '<div id="app"></div>';
+  const out = await plugin.transform(src, `${import.meta.dir}/__router_jsx_${counter++}.tsx`);
+  const code = await bundle(
     out.code
-      .replaceAll(`from "bsig/router"`, `from "${here}/../router.js"`)
-      .replaceAll(`from "bsig"`, `from "${here}/../runtime.js"`),
+      .replaceAll('from "bsig/router"', 'from "../router.js"')
+      .replaceAll('from "bsig"', 'from "../runtime.js"'),
+    { loader: 'jsx', format: 'iife' },
   );
-  const code = esbuild.buildSync({
-    entryPoints: [bundled],
-    bundle: true,
-    format: 'iife',
-    write: false,
-    logLevel: 'silent',
-  }).outputFiles[0].text;
-  fs.rmSync(bundled);
   (0, eval)(code);
-  await settle();
+  await settle(5);
   return {
-    dom,
-    app: dom.window.document.getElementById('app'),
+    app: document.getElementById('app'),
     async navigate(to) {
       await window.__router.navigate(to);
-      await settle();
+      await settle(5);
     },
   };
 }
@@ -147,7 +43,7 @@ mount(document.getElementById('app'), () => <Router routes={routes} />);
 `,
       'http://localhost/about',
     );
-    assert.equal(app.querySelector('.page').textContent, 'About');
+    expect(app.querySelector('.page').textContent).toBe('About');
   });
 
   it('<Router router={instance} /> (documented) boots and renders', async () => {
@@ -162,11 +58,11 @@ mount(document.getElementById('app'), () => <Router router={router} />);
 `,
       'http://localhost/about',
     );
-    assert.equal(app.querySelector('.page').textContent, 'About');
+    expect(app.querySelector('.page').textContent).toBe('About');
   });
 
   it('unwraps a thunked beforeEnter guard (boot redirect)', async () => {
-    const { app, dom } = await run(
+    const { app } = await run(
       `
 import mount from 'bsig';
 import { Router, Outlet } from 'bsig/router';
@@ -182,8 +78,8 @@ mount(document.getElementById('app'), () => <Router routes={routes} beforeEnter=
 `,
       'http://localhost/admin',
     );
-    assert.equal(app.querySelector('.login').textContent, 'login');
-    assert.equal(dom.window.location.pathname, '/login');
+    expect(app.querySelector('.login').textContent).toBe('login');
+    expect(window.location.pathname).toBe('/login');
   });
 
   it('renders through a fragment layout root with a fragment page', async () => {
@@ -198,9 +94,9 @@ mount(document.getElementById('app'), () => <Router routes={routes} />);
 `,
       'http://localhost/about',
     );
-    assert.ok(app.querySelector('nav'), 'layout fragment nav rendered');
-    assert.equal(app.querySelector('.page').textContent, 'About');
-    assert.ok(!app.textContent.includes('=>'), 'no thunk source leaked as text');
+    expect(app.querySelector('nav')).toBeTruthy(); // layout fragment nav rendered
+    expect(app.querySelector('.page').textContent).toBe('About');
+    expect(app.textContent).not.toContain('=>'); // no thunk source leaked as text
   });
 
   it('<Router> inside <Show> keeps updating after an off/on cycle', async () => {
@@ -225,11 +121,11 @@ mount(document.getElementById('app'), () => <Show when={show.value}><Router rout
     // Hide, then show again: the router node is rebuilt, so a later navigation
     // must still patch the DOM.
     window.__show.value = false;
-    await settle();
+    await settle(5);
     window.__show.value = true;
-    await settle();
-    assert.equal(app.querySelector('.a').textContent, 'A');
+    await settle(5);
+    expect(app.querySelector('.a').textContent).toBe('A');
     await navigate('/b');
-    assert.equal(app.querySelector('.b').textContent, 'B');
+    expect(app.querySelector('.b').textContent).toBe('B');
   });
 });

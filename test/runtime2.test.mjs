@@ -1,13 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { JSDOM } from 'jsdom';
-
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-globalThis.Node = dom.window.Node;
-globalThis.HTMLUnknownElement = dom.window.HTMLUnknownElement;
-globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+import { describe, it, expect } from 'bun:test';
 
 const rt = await import('../runtime.js');
 const { h, signal, computed, reactive, effect, scope, watch, untrack, If, For, Show, Component, Transition, onMount, onUnmount, provide, inject } = rt;
@@ -29,11 +20,11 @@ describe('lifecycle', () => {
     document.body.appendChild(target);
     const unmount = mount(target, () => h('div', null, h(Show, { when: () => show.value }, h(Child, null))));
     await flush();
-    assert.deepEqual(events, [['mount', true]]);
+    expect(events).toEqual([['mount', true]]);
     show.value = false;
     await flush();
-    assert.deepEqual(events, [['mount', true], ['unmount']]);
-    assert.equal(target.textContent, '');
+    expect(events).toEqual([['mount', true], ['unmount']]);
+    expect(target.textContent).toBe('');
     unmount();
     target.remove();
   });
@@ -53,13 +44,13 @@ describe('lifecycle', () => {
     const afterMount = runs;
     s.value = 1;
     await flush();
-    assert.ok(runs > afterMount);
+    expect(runs).toBeGreaterThan(afterMount);
     const frozen = runs;
     unmount();
-    assert.equal(target.textContent, '');
+    expect(target.textContent).toBe('');
     s.value = 2;
     await flush();
-    assert.equal(runs, frozen);
+    expect(runs).toBe(frozen);
     target.remove();
   });
   it('unmount stops components created inside a dynamic child', async () => {
@@ -79,17 +70,17 @@ describe('lifecycle', () => {
     document.body.appendChild(target);
     const unmount = mount(target, App);
     await flush();
-    assert.deepEqual(events, []);
+    expect(events).toEqual([]);
     const before = childRuns;
     s.value = 1;
     await flush();
-    assert.ok(childRuns > before, 'child effect tracked the signal');
+    expect(childRuns).toBeGreaterThan(before); // child effect tracked the signal
     unmount();
-    assert.deepEqual(events, ['child']);
+    expect(events).toEqual(['child']);
     const frozen = childRuns;
     s.value = 2;
     await flush();
-    assert.equal(childRuns, frozen, 'no updates leak after unmount');
+    expect(childRuns).toBe(frozen); // no updates leak after unmount
     target.remove();
   });
 
@@ -107,10 +98,10 @@ describe('lifecycle', () => {
     document.body.appendChild(target);
     const unmount = mount(target, () => h(Provider, null));
     await flush();
-    assert.deepEqual(events, ['mount']);
-    assert.equal(target.textContent, 'page');
+    expect(events).toEqual(['mount']);
+    expect(target.textContent).toBe('page');
     unmount();
-    assert.deepEqual(events, ['mount', 'unmount']);
+    expect(events).toEqual(['mount', 'unmount']);
     target.remove();
   });
 
@@ -128,9 +119,9 @@ describe('lifecycle', () => {
     await flush();
     show.value = false;
     await flush();
-    assert.deepEqual(events, ['child']);
+    expect(events).toEqual(['child']);
     unmount();
-    assert.deepEqual(events, ['child'], 'ancestor unmount must not re-run it');
+    expect(events).toEqual(['child']); // ancestor unmount must not re-run it
     target.remove();
   });
 });
@@ -151,14 +142,14 @@ describe('context', () => {
     const target = document.createElement('div');
     mount(target, Root);
     await flush();
-    assert.equal(seen[0], theme);
+    expect(seen[0]).toBe(theme);
     const Outside = () => {
       seen.push(inject('missing', 'dflt'));
       return h('b', null, 'o');
     };
     mount(document.createElement('div'), Outside);
     await flush();
-    assert.equal(seen[1], 'dflt');
+    expect(seen[1]).toBe('dflt');
   });
 });
 
@@ -168,14 +159,14 @@ describe('watch/untrack/scope/computed', () => {
     const calls = [];
     const stop = watch(s, (n, o) => calls.push([n, o]));
     await flush();
-    assert.deepEqual(calls, []);
+    expect(calls).toEqual([]);
     s.value = 2;
     await flush();
-    assert.deepEqual(calls, [[2, 1]]);
+    expect(calls).toEqual([[2, 1]]);
     stop();
     s.value = 3;
     await flush();
-    assert.deepEqual(calls, [[2, 1]]);
+    expect(calls).toEqual([[2, 1]]);
   });
 
   it('watch supports getter source', async () => {
@@ -184,7 +175,7 @@ describe('watch/untrack/scope/computed', () => {
     watch(() => s.value.toUpperCase(), (n) => (got = n));
     s.value = 'b';
     await flush();
-    assert.equal(got, 'B');
+    expect(got).toBe('B');
   });
 
   it('untrack reads without subscribing', async () => {
@@ -192,13 +183,13 @@ describe('watch/untrack/scope/computed', () => {
     let runs = 0;
     effect(() => { runs++; a.value; untrack(() => b.value); });
     await flush();
-    assert.equal(runs, 1);
+    expect(runs).toBe(1);
     b.value = 5;
     await flush();
-    assert.equal(runs, 1);
+    expect(runs).toBe(1);
     a.value = 1;
     await flush();
-    assert.equal(runs, 2);
+    expect(runs).toBe(2);
   });
 
   it('scope stops children in cascade', async () => {
@@ -213,19 +204,19 @@ describe('watch/untrack/scope/computed', () => {
     a.value = 1;
     b.value = 1;
     await flush();
-    assert.equal(ra, 1);
-    assert.equal(rb, 1);
+    expect(ra).toBe(1);
+    expect(rb).toBe(1);
   });
 
   it('computed chains update', async () => {
     const base = signal(2);
     const dbl = computed(() => base.value * 2);
     const quad = computed(() => dbl.value * 2);
-    assert.equal(quad.value, 8);
+    expect(quad.value).toBe(8);
     base.value = 3;
     await flush();
-    assert.equal(dbl.value, 6);
-    assert.equal(quad.value, 12);
+    expect(dbl.value).toBe(6);
+    expect(quad.value).toBe(12);
   });
 
   it('synchronous sets batch into one run', async () => {
@@ -237,8 +228,8 @@ describe('watch/untrack/scope/computed', () => {
     s.value = 2;
     s.value = 3;
     await flush();
-    assert.equal(runs, 2);
-    assert.equal(last, 3);
+    expect(runs).toBe(2);
+    expect(last).toBe(3);
   });
 });
 
@@ -248,10 +239,10 @@ describe('reactive', () => {
     const target = document.createElement('div');
     target.appendChild(h('p', null, () => String(st.items.length)));
     await flush();
-    assert.equal(target.textContent, '0');
+    expect(target.textContent).toBe('0');
     st.items.push('x');
     await flush();
-    assert.equal(target.textContent, '1');
+    expect(target.textContent).toBe('1');
   });
 
   it('array methods notify index and length readers', async () => {
@@ -262,16 +253,16 @@ describe('reactive', () => {
     await flush();
     arr.push('d');
     await flush();
-    assert.equal(li, 1, 'push touches no existing index');
-    assert.equal(ll, 2, 'push notifies length');
+    expect(li).toBe(1); // push touches no existing index
+    expect(ll).toBe(2); // push notifies length
     arr.pop();
     await flush();
-    assert.equal(arr.length, 3);
-    assert.equal(ll, 3, 'pop notifies length');
+    expect(arr.length).toBe(3);
+    expect(ll).toBe(3); // pop notifies length
     arr.splice(0, 1);
     await flush();
-    assert.equal(arr.length, 2);
-    assert.equal(ll, 4, 'splice notifies length');
+    expect(arr.length).toBe(2);
+    expect(ll).toBe(4); // splice notifies length
   });
 
   it('per-property granularity', async () => {
@@ -282,16 +273,16 @@ describe('reactive', () => {
     await flush();
     st.a = 10;
     await flush();
-    assert.equal(ra, 2);
-    assert.equal(rb, 1);
+    expect(ra).toBe(2);
+    expect(rb).toBe(1);
   });
 
   it('nested identity is stable', async () => {
     const st = reactive({ user: { name: 'Al' } });
-    assert.equal(st.user, st.user);
+    expect(st.user).toBe(st.user);
     st.user.name = 'Bo';
     await flush();
-    assert.equal(st.user.name, 'Bo');
+    expect(st.user.name).toBe('Bo');
   });
 });
 
@@ -304,14 +295,14 @@ describe('ref/svg/Component', () => {
       h('input', { ref: s, type: 'text' }),
       h('input', { ref: (el) => (cbEl = el), type: 'text' })
     ));
-    assert.equal(s.value.tagName, 'INPUT');
-    assert.equal(cbEl.tagName, 'INPUT');
+    expect(s.value.tagName).toBe('INPUT');
+    expect(cbEl.tagName).toBe('INPUT');
   });
 
   it('svg namespace', async () => {
     const el = h('svg', null, h('circle', null));
-    assert.equal(el.namespaceURI, 'http://www.w3.org/2000/svg');
-    assert.equal(el.firstChild.namespaceURI, 'http://www.w3.org/2000/svg');
+    expect(el.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(el.firstChild.namespaceURI).toBe('http://www.w3.org/2000/svg');
   });
 
   it('Component switches on reactive is, old tree unmounts', async () => {
@@ -325,11 +316,11 @@ describe('ref/svg/Component', () => {
     const target = document.createElement('div');
     target.appendChild(h('div', null, h(Component, { is: () => which.value })));
     await flush();
-    assert.equal(target.textContent, 'AAA');
+    expect(target.textContent).toBe('AAA');
     which.value = B;
     await flush();
-    assert.equal(target.textContent, 'BBB');
-    assert.deepEqual(gone, ['A']);
+    expect(target.textContent).toBe('BBB');
+    expect(gone).toEqual(['A']);
   });
 });
 
@@ -368,12 +359,12 @@ describe('list model conformance (seeded fuzz)', () => {
       }
       data.value = d;
       await flush();
-      const expect = d.map((r) => `${r.id}:${r.label}`);
-      assert.deepEqual(snapshot(), expect, `step ${step}`);
+      const expected = d.map((r) => `${r.id}:${r.label}`);
+      expect(snapshot()).toEqual(expected); // step ${step}
       for (const li of target.querySelectorAll('li')) {
         const rid = parseInt(li.textContent, 10);
         if (!seen.has(rid)) seen.set(rid, li);
-        else assert.equal(seen.get(rid), li, `node reused for id ${rid}`);
+        else expect(seen.get(rid)).toBe(li); // node reused for id ${rid}
       }
     }
   });
@@ -386,7 +377,7 @@ describe('list model conformance (seeded fuzz)', () => {
     target.appendChild(h('ul', null, For(data, 'id', (row) => h('li', null, () => `${row.id}`))));
     await flush();
     let moves = 0;
-    const proto = dom.window.Node.prototype;
+    const proto = Node.prototype;
     const orig = proto.insertBefore;
     proto.insertBefore = function (...args) {
       moves++;
@@ -400,11 +391,10 @@ describe('list model conformance (seeded fuzz)', () => {
     } finally {
       proto.insertBefore = orig;
     }
-    assert.deepEqual(
-      [...target.querySelectorAll('li')].map((li) => li.textContent),
-      data.value.map((r) => String(r.id))
-    );
-    assert.ok(moves <= 4, `expected ~2 moves, got ${moves}`);
+    expect(
+      [...target.querySelectorAll('li')].map((li) => li.textContent)
+    ).toEqual(data.value.map((r) => String(r.id)));
+    expect(moves).toBeLessThanOrEqual(4); // expected ~2 moves
   });
 });
 
@@ -421,21 +411,22 @@ describe('Transition', () => {
     ));
     await flush(60);
     let box = target.querySelector('.box');
-    assert.ok(box, 'entered node present');
-    // jsdom never fires transitionend on its own; enter sits in to-state
-    assert.ok(box.classList.contains('to-b'), 'enter progressed, got: ' + box.className);
-    box.dispatchEvent(new dom.window.Event('transitionend', { bubbles: true }));
+    expect(box).toBeTruthy(); // entered node present
+    // happy-dom never fires transitionend on its own; enter sits in to-state
+    expect(box.classList.contains('to-b')).toBe(true); // enter progressed
+    box.dispatchEvent(new Event('transitionend', { bubbles: true }));
     await flush(10);
     box = target.querySelector('.box');
-    assert.ok(box.classList.contains('idle-c'), 'idle class applied, got: ' + box.className);
-    assert.ok(!box.classList.contains('from-a') && !box.classList.contains('to-b'), 'transient classes cleaned');
+    expect(box.classList.contains('idle-c')).toBe(true); // idle class applied
+    expect(box.classList.contains('from-a')).toBe(false); // transient classes cleaned
+    expect(box.classList.contains('to-b')).toBe(false);
     show.value = false;
     await flush(40);
     box = target.querySelector('.box');
-    assert.ok(box, 'leaving node stays until transitionend');
-    box.dispatchEvent(new dom.window.Event('transitionend', { bubbles: true }));
+    expect(box).toBeTruthy(); // leaving node stays until transitionend
+    box.dispatchEvent(new Event('transitionend', { bubbles: true }));
     await flush(10);
-    assert.equal(target.querySelector('.box'), null, 'removed after transitionend');
+    expect(target.querySelector('.box')).toBeNull(); // removed after transitionend
   });
 });
 
@@ -451,9 +442,27 @@ describe('append (dynamic child resolution)', () => {
       () => () => ['x', () => [() => h('p', null, 'deep')]],
     );
     await flush();
-    assert.equal(target.textContent, 'xdeep');
-    assert.ok(target.querySelector('p'), 'innermost thunk resolved to a node');
+    expect(target.textContent).toBe('xdeep');
+    expect(target.querySelector('p')).toBeTruthy(); // innermost thunk resolved to a node
     unmount();
+    target.remove();
+  });
+
+  it('stops a dynamic child held in a component-returned array on unmount', async () => {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const label = signal('a');
+    // A provider-shaped component returns an array; one slot is a live child.
+    const unmount = mount(target, () => [() => h('p', null, () => `v${label.value}`)]);
+    await flush();
+    const p = target.querySelector('p');
+    expect(p.textContent).toBe('va');
+
+    unmount();
+    expect(p.isConnected).toBe(false);
+    label.value = 'b';
+    await flush();
+    expect(p.textContent).toBe('va'); // the array's cleanup stopped the live child
     target.remove();
   });
 });

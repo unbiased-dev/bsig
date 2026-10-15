@@ -1,13 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { JSDOM } from 'jsdom';
-
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-globalThis.Node = dom.window.Node;
-globalThis.HTMLUnknownElement = dom.window.HTMLUnknownElement;
-globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+import { describe, it, expect } from 'bun:test';
 
 const { jsx, jsxs, Fragment } = await import('../jsx-runtime.js');
 const mount = (await import('../runtime.js')).default;
@@ -15,28 +6,28 @@ const mount = (await import('../runtime.js')).default;
 describe('jsx-runtime (automatic JSX)', () => {
   it('creates elements, children via props', async () => {
     const el = jsx('div', { className: 'a', children: 'hi' });
-    assert.equal(el.tagName, 'DIV');
-    assert.equal(el.textContent, 'hi');
+    expect(el.tagName).toBe('DIV');
+    expect(el.textContent).toBe('hi');
   });
 
   it('nests and handles arrays', async () => {
     const el = jsxs('ul', { children: [jsx('li', { children: 'x' }), jsx('li', { children: 'y' })] });
-    assert.equal(el.querySelectorAll('li').length, 2);
+    expect(el.querySelectorAll('li').length).toBe(2);
   });
 
   it('strips key, keeps ref working', async () => {
     const ref = { value: null };
     const el = jsx('input', { key: 'k1', ref, type: 'text' });
-    assert.equal(el.getAttribute('key'), null);
-    assert.equal(ref.value, el);
+    expect(el.getAttribute('key')).toBeNull();
+    expect(ref.value).toBe(el);
   });
 
   it('Fragment renders children without wrapper', async () => {
     const target = document.createElement('div');
     mount(target, () => jsx(Fragment, { children: [jsx('p', { children: 'One' }), jsx('p', { children: 'Two' })] }));
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(target.textContent, 'OneTwo');
-    assert.equal(target.querySelectorAll('p').length, 2);
+    expect(target.textContent).toBe('OneTwo');
+    expect(target.querySelectorAll('p').length).toBe(2);
   });
 
   it('single (non-array) children work in Show/Transition/elements', async () => {
@@ -50,7 +41,7 @@ describe('jsx-runtime (automatic JSX)', () => {
       jsx(Transition, { enter: ['a', 'b', 'c'], children: jsx('i', { children: 't' }) }),
     ] }));
     await new Promise((r) => setTimeout(r, 30));
-    assert.equal(target.querySelector('b').textContent, 'solo');
-    assert.equal(target.querySelector('i').textContent, 't');
+    expect(target.querySelector('b').textContent).toBe('solo');
+    expect(target.querySelector('i').textContent).toBe('t');
   });
 });
