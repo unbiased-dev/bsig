@@ -156,15 +156,15 @@ export function createRouter(options) {
 
   const collectGuards = (target) => {
     const guards = [];
-    if (options.beforeEnter) guards.push(options.beforeEnter);
-    if (options.routes.beforeEnter) guards.push(options.routes.beforeEnter);
+    if (options.guard) guards.push(options.guard);
+    if (options.routes.guard) guards.push(options.routes.guard);
     const chain =
       matchTree(options.routes.children ?? [], target, options.routes.path) ??
       (options.notFound
         ? [{ route: options.notFound, path: target, base: '', params: {} }]
         : []);
     for (const entry of chain) {
-      if (entry.route.beforeEnter) guards.push(entry.route.beforeEnter);
+      if (entry.route.guard) guards.push(entry.route.guard);
     }
     return guards;
   };
@@ -435,7 +435,7 @@ const unwrap = (v) => (typeof v === 'function' ? v() : v);
 
 // A guard is itself a function, so it may arrive either directly (written as a
 // function expression, untouched by the plugin) or wrapped in a plugin thunk
-// (`beforeEnter={guard}` -> `() => guard`). Resolve at call time: a thunk is
+// (`guard={fn}` -> `() => fn`). Resolve at call time: a thunk is
 // zero-arg and returns the guard, while a real zero-arg guard returns its
 // verdict. Calling it lazily avoids invoking a guard during setup.
 const asGuard = (v) => {
@@ -452,7 +452,7 @@ export const Router = (props) => {
     createRouter({
       routes: unwrap(props.routes),
       notFound: unwrap(props.notFound),
-      beforeEnter: asGuard(props.beforeEnter),
+      guard: asGuard(props.guard),
     });
   activeRouter = router;
   // One document-level click interceptor owns every same-document link (plain

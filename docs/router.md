@@ -13,7 +13,7 @@ so blocks and redirects never flicker.
 
 ## 1. Set up routes
 
-A route is `{ path, component, children?, beforeEnter? }`. The root route's
+A route is `{ path, component, children?, guard? }`. The root route's
 `path` is the base and its `component` is the layout. Layouts render
 `<Outlet/>` where the matched child should go.
 
@@ -60,7 +60,7 @@ The root layout may return a fragment (`<><nav/><Outlet/></>`); a fragment root
 is resolved like any other. `<Router>` can be mounted anywhere a component can —
 as the app root or nested inside another component, including conditionally
 (such as inside `<Show>`). Its config props (`routes`, `router`, `notFound`,
-`beforeEnter`) are read back out of the JSX plugin's auto-thunks, so passing them
+`guard`) are read back out of the JSX plugin's auto-thunks, so passing them
 by reference works as written.
 
 ## 2. Nested routes and params
@@ -121,7 +121,7 @@ await router.navigate('/', { replace: true });
 
 ## 4. Guards
 
-`beforeEnter` runs before a route activates. Return:
+`guard` runs before a route activates. Return:
 
 - `true` / `undefined` — allow
 - `false` — block (navigation is aborted, the page does not change)
@@ -134,10 +134,10 @@ They may be async.
 const routes: Route = {
   path: '/',
   component: Layout,
-  beforeEnter: ({ to }) => (to.startsWith('/admin') && !isSignedIn() ? '/login' : true),
+  guard: ({ to }) => (to.startsWith('/admin') && !isSignedIn() ? '/login' : true),
   children: [
     { path: '/login', component: Login },
-    { path: '/admin', component: Admin, beforeEnter: () => (isAdmin() ? true : false) },
+    { path: '/admin', component: Admin, guard: () => (isAdmin() ? true : false) },
   ],
 };
 ```
@@ -157,13 +157,13 @@ const notFound: Route = { path: '', component: NotFound };
 
 | Export | Purpose |
 | --- | --- |
-| `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `beforeEnter?`, `router?`. |
+| `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `guard?`, `router?`. |
 | `Outlet` | Renders the route matched at this nesting depth. |
 | `Link` | Navigation link with `aria-current` and prefetch. |
-| `createRouter({ routes, notFound?, beforeEnter? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
+| `createRouter({ routes, notFound?, guard? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
 | `matchTree(routes, pathname, base)` | Pure matcher; returns the matched chain or `null`. |
 | `Route`, `RouteProps`, `MatchedRoute` | Types. |
-| `BeforeEnterFn`, `BeforeEnterResult`, `BeforeEnterContext` | Guard types. |
+| `GuardFn`, `GuardResult`, `GuardContext` | Guard types. |
 | `RouterOptions`, `NavigateOptions`, `RouterProps`, `RouterInstance`, `LinkProps` | Instance/props types. |
 
 Scroll restoration is managed manually (`history.scrollRestoration =

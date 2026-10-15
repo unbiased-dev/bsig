@@ -1,6 +1,6 @@
 ---
 name: router
-description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), beforeEnter guards, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
+description: Use when working with the bsig router — bsig/router, Route configs, <Router />, <Link>, <Outlet />, navigate(), guard hooks, prefetching, or matchTree(). Covers the API surface and gotchas (parent preservation, parallel guards, vendored regexparam matching) so routing code follows the router's conventions.
 ---
 
 # bsig/router
@@ -55,7 +55,7 @@ needed.
 
 ## Core API
 
-- **`<Router routes={...} notFound={...} beforeEnter={...} />`** or
+- **`<Router routes={...} notFound={...} guard={...} />`** or
   **`<Router router={instance} />`** — mounts a router. Returns the root layout
   (internally through an array), so it is safe as the app root and can also be
   nested inside another component.
@@ -67,7 +67,7 @@ needed.
 - **`<Outlet />`** — renders the matched route at the current nesting level;
   each layout renders exactly one. Use the JSX tag, not `{Outlet()}` (the tag
   creates the component context that `provide`/`inject` and lifecycles need).
-- **`createRouter({ routes, notFound, beforeEnter })`** →
+- **`createRouter({ routes, notFound, guard })`** →
   `{ RouterView, Outlet, navigate, boot, handleClick, handlePopState, prefetch,
   isActive, Link, pathname }`.
 - **`router.navigate(to, { replace? })`** → `Promise<boolean>` (`false` =
@@ -86,7 +86,7 @@ interface Route {
   path: string;
   component: (props: { params, route }) => any; // runs once
   children?: Route[];
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 ```
 
@@ -96,13 +96,13 @@ interface Route {
   (`Record<string, string | string[]>`); the route object is `props.route`.
 - Nesting is arbitrary depth; each level's layout renders its own `<Outlet />`.
 
-## Navigation guards (`beforeEnter`)
+## Navigation guards (`guard`)
 
 Return values: `false` = **block**; `string` = **redirect** (push);
 `{ path, replace?: true }` = **redirect** (replace); `undefined`/`true` = allow.
 Hooks may be async.
 
-- Global (on `createRouter` / `<Router />`) plus per-route (`route.beforeEnter`).
+- Global (on `createRouter` / `<Router />`) plus per-route (`route.guard`).
 - For a navigation, **all matched-layer hooks run in parallel** (`Promise.all`);
   the render waits for the slowest.
 - **The first definitive result in highest-parent-first order wins** — a
@@ -134,7 +134,7 @@ Hooks may be async.
 - **Mountable anywhere.** `<Router />` works as the app root or nested inside
   another component — including conditionally, e.g. wrapped in `<Show>` (its
   children are thunked so each activation remounts it). Layouts may return a
-  fragment root. Config props (`routes`/`router`/`notFound`/`beforeEnter`) are
+  fragment root. Config props (`routes`/`router`/`notFound`/`guard`) are
   unwrapped from the plugin's auto-thunks, so passing them by reference is fine.
 - `<Router />` runs its setup eagerly (initial boot + `navigate` listener)
   because bsig only flushes `onMount` for the root component and

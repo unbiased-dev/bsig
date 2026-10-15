@@ -1,20 +1,20 @@
 /* bsig/router — types for the tree-shakeable router entry point. */
 import type { Signal } from './runtime.js';
 
-export interface BeforeEnterContext {
+export interface GuardContext {
   to: string;
   from: string;
 }
 
-export type BeforeEnterResult =
+export type GuardResult =
   | boolean
   | string
   | { path: string; replace?: boolean }
   | undefined;
 
-export type BeforeEnterFn = (
-  context: BeforeEnterContext,
-) => BeforeEnterResult | Promise<BeforeEnterResult>;
+export type GuardFn = (
+  context: GuardContext,
+) => GuardResult | Promise<GuardResult>;
 
 /** Props every routed component receives. */
 export interface RouteProps {
@@ -29,7 +29,7 @@ export interface Route {
   path: string;
   component: RouteComponent;
   children?: Route[];
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 
 export interface MatchedRoute {
@@ -59,7 +59,7 @@ export interface RouterOptions {
   /** Root route; its `path` is the base and its `component` is the layout. */
   routes: Route;
   notFound?: Route;
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 
 export interface NavigateOptions {
@@ -87,7 +87,7 @@ export interface RouterProps {
   router?: RouterInstance;
   routes?: Route;
   notFound?: Route;
-  beforeEnter?: BeforeEnterFn;
+  guard?: GuardFn;
 }
 
 /** Mounts the router and renders the root layout. Use once, at the app root. */

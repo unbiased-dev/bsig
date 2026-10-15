@@ -225,7 +225,7 @@ describe('router: boot + render', () => {
         {
           path: '/admin',
           component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => '/login',
+          guard: () => '/login',
         },
         { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
       ],
@@ -249,7 +249,7 @@ describe('router: boot + render', () => {
         {
           path: '/admin',
           component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => ({ path: '/login', replace: true }),
+          guard: () => ({ path: '/login', replace: true }),
         },
         { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
       ],
@@ -272,7 +272,7 @@ describe('router: boot + render', () => {
         {
           path: '/locked',
           component: () => h('p', { class: 'locked' }, 'locked'),
-          beforeEnter: () => false,
+          guard: () => false,
         },
       ],
     };
@@ -295,7 +295,7 @@ describe('router: boot + render', () => {
         {
           path: '/admin',
           component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => {
+          guard: () => {
             throw new Error('guard blew up');
           },
         },
@@ -341,7 +341,7 @@ describe('router: boot + render', () => {
       ],
     };
     // The global guard holds every resolution until released.
-    const r = router.createRouter({ routes, beforeEnter: () => gate.then(() => true) });
+    const r = router.createRouter({ routes, guard: () => gate.then(() => true) });
     const app = mountApp(rt, router, r);
     const pending = r.navigate('/fast');
     release();
@@ -352,7 +352,7 @@ describe('router: boot + render', () => {
     app.unmount();
   });
 
-  it('unwraps a thunked beforeEnter guard passed to <Router/>', async () => {
+  it('unwraps a thunked guard passed to <Router/>', async () => {
     const { rt, router } = await setup('http://localhost/admin');
     const { h } = rt;
     const guard = ({ to }) => (to === '/admin' ? '/login' : true);
@@ -366,10 +366,10 @@ describe('router: boot + render', () => {
     };
     const target = document.createElement('div');
     document.body.appendChild(target);
-    // The JSX plugin delivers `beforeEnter={guard}` as the zero-arg thunk
+    // The JSX plugin delivers `guard={guard}` as the zero-arg thunk
     // `() => guard`; `asGuard` must unwrap it and call the real guard.
     const unmount = rt.default(target, () =>
-      h(router.Router, { routes, beforeEnter: () => guard }),
+      h(router.Router, { routes, guard: () => guard }),
     );
     live.add(() => {
       unmount();
@@ -486,7 +486,7 @@ describe('router: navigate', () => {
         {
           path: '/secret',
           component: () => h('p', { class: 'secret' }, 'secret'),
-          beforeEnter: () => false,
+          guard: () => false,
         },
       ],
     };
@@ -511,7 +511,7 @@ describe('router: navigate', () => {
         {
           path: '/boom',
           component: () => h('p', { class: 'boom' }, 'boom'),
-          beforeEnter: () => {
+          guard: () => {
             throw new Error('guard blew up');
           },
         },
@@ -536,7 +536,7 @@ describe('router: navigate', () => {
         {
           path: '/admin',
           component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => '/login',
+          guard: () => '/login',
         },
         { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
       ],
@@ -563,7 +563,7 @@ describe('router: navigate', () => {
         {
           path: '/admin',
           component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => ({ path: '/login', replace: true }),
+          guard: () => ({ path: '/login', replace: true }),
         },
         { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
       ],
@@ -592,7 +592,7 @@ describe('router: navigate', () => {
         {
           path: '/slow',
           component: () => h('p', { class: 'slow' }, 'slow'),
-          beforeEnter: () => gate.then(() => true),
+          guard: () => gate.then(() => true),
         },
         { path: '/fast', component: () => h('p', { class: 'fast' }, 'fast') },
       ],
@@ -651,7 +651,7 @@ describe('router: back/forward traversal', () => {
         {
           path: '/',
           component: () => h('p', { class: 'home' }, 'home'),
-          beforeEnter: () => window.__open !== false,
+          guard: () => window.__open !== false,
         },
         { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
       ],
@@ -683,7 +683,7 @@ describe('router: back/forward traversal', () => {
         {
           path: '/foreign',
           component: () => h('p', { class: 'foreign' }, 'foreign'),
-          beforeEnter: () => window.__open !== false,
+          guard: () => window.__open !== false,
         },
       ],
     };
@@ -715,7 +715,7 @@ describe('router: back/forward traversal', () => {
         {
           path: '/',
           component: () => h('p', { class: 'home' }, 'home'),
-          beforeEnter: () => window.__redir ?? true,
+          guard: () => window.__redir ?? true,
         },
         { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
         { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
@@ -777,7 +777,7 @@ describe('router: back/forward traversal', () => {
         {
           path: '/bad',
           component: () => h('p', { class: 'bad' }, 'bad'),
-          beforeEnter: () => {
+          guard: () => {
             throw new Error('guard blew up');
           },
         },
@@ -812,7 +812,7 @@ describe('router: back/forward traversal', () => {
         {
           path: '/',
           component: () => h('p', { class: 'home' }, 'home'),
-          beforeEnter: () => gate.then(() => true),
+          guard: () => gate.then(() => true),
         },
         { path: '/fast', component: () => h('p', { class: 'fast' }, 'fast') },
       ],

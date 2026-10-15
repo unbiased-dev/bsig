@@ -172,7 +172,7 @@ const Admin = () => <p class="admin">admin</p>;
 const Login = () => <p class="login">login</p>;
 const Layout = () => <div class="layout"><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/admin', component: Admin, beforeEnter: function () { return '/login'; } },
+  { path: '/admin', component: Admin, guard: function () { return '/login'; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -186,7 +186,7 @@ const Admin = () => <p class="admin">admin</p>;
 const Login = () => <p class="login">login</p>;
 const Layout = () => <div class="layout"><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/admin', component: Admin, beforeEnter: function () { return { path: '/login', replace: true }; } },
+  { path: '/admin', component: Admin, guard: function () { return { path: '/login', replace: true }; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -204,9 +204,9 @@ const Layout = () => <div class="layout"><nav><Link to="/" id="link-home">home</
 window.__allowAdmin = true;
 window.__blockHome = false;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
-  { path: '/', component: Home, beforeEnter: function () { return window.__blockHome ? false : true; } },
-  { path: '/admin', component: Admin, beforeEnter: function () { return window.__allowAdmin ? true : '/login'; } },
-  { path: '/secret', component: Secret, beforeEnter: function () { return false; } },
+  { path: '/', component: Home, guard: function () { return window.__blockHome ? false : true; } },
+  { path: '/admin', component: Admin, guard: function () { return window.__allowAdmin ? true : '/login'; } },
+  { path: '/secret', component: Secret, guard: function () { return false; } },
   { path: '/login', component: Login },
 ]}});
 window.__router = router;
@@ -224,7 +224,7 @@ window.__guardCalls = [];
 const Layout = () => <div class="layout"><nav><Link to="/" id="link-home">home</Link><Link to="/heavy" id="link-heavy">heavy</Link></nav><Outlet /></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [
   { path: '/', component: Home },
-  { path: '/heavy', component: Heavy, beforeEnter: function () { window.__guardCalls.push('heavy'); return true; } },
+  { path: '/heavy', component: Heavy, guard: function () { window.__guardCalls.push('heavy'); return true; } },
 ]}});
 window.__router = router;
 mount(document.getElementById('app'), () => <Router router={router} />);
@@ -289,7 +289,7 @@ const router = createRouter({
     { path: '/', component: Home },
     { path: '/users', component: Users, children: [{ path: '/:id', component: User }] },
     { path: '/heavy', component: Heavy },
-    { path: '/admin', component: Admin, beforeEnter: function () { return '/login'; } },
+    { path: '/admin', component: Admin, guard: function () { return '/login'; } },
     { path: '/login', component: Login },
   ]},
   notFound: { path: '', component: Missing },

@@ -1,8 +1,8 @@
 import { h } from 'bsig';
 import { Router, Outlet, Link, matchTree } from 'bsig/router';
-import type { BeforeEnterFn, Route, RouteProps } from 'bsig/router';
+import type { GuardFn, Route, RouteProps } from 'bsig/router';
 
-const guard: BeforeEnterFn = ({ to, from }) => {
+const guard: GuardFn = ({ to, from }) => {
   if (to === from) return true;
   return { path: '/login', replace: true };
 };
@@ -22,7 +22,7 @@ const routes: Route = {
   component: Layout,
   children: [
     { path: '/', component: Home },
-    { path: '/users/:id', component: User, beforeEnter: guard },
+    { path: '/users/:id', component: User, guard },
   ],
 };
 
@@ -30,5 +30,5 @@ const chain = matchTree(routes.children ?? [], '/users/1', '/');
 export const depth = chain ? chain.length : 0;
 
 export function App() {
-  return <Router routes={routes} beforeEnter={guard} />;
+  return <Router routes={routes} guard={guard} />;
 }

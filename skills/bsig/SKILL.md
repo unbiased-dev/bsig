@@ -440,11 +440,11 @@ const routes = {
 mount(document.getElementById('app')!, () => <Router routes={routes} />);
 ```
 
-- `Route` is `{ path, component, children?, beforeEnter? }`; the root's
+- `Route` is `{ path, component, children?, guard? }`; the root's
   `component` is the layout. Routed components get `{ params, route }`.
-- `beforeEnter({ to, from })` returns `true`/`undefined` (allow), `false`
+- `guard({ to, from })` returns `true`/`undefined` (allow), `false`
   (block), or a path / `{ path, replace? }` (redirect); may be async.
-- `createRouter({ routes, notFound?, beforeEnter? })` gives you `navigate`,
+- `createRouter({ routes, notFound?, guard? })` gives you `navigate`,
   `prefetch`, `isActive`, and `pathname`. `matchTree()` matches without
   rendering.
 - `<Link>` sets `aria-current="page"` when active and prefetches on
