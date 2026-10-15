@@ -13,7 +13,7 @@ fills that gap.
 ```sh
 mkdir my-app && cd my-app
 bun init -y
-bun add github:unbiased-dev/bsig#v0.6.2
+bun add github:unbiased-dev/bsig#v0.7.0
 ```
 
 (`@babel/*` arrives as transitive deps of bsig — build-time only.)

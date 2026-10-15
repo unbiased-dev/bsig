@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'bun:test';
-import { bundle, settle, useNavigation } from './helpers.ts';
+import { describe, it, expect, afterEach } from 'bun:test';
+import { bundle, settle, useHistory } from './helpers.ts';
 
 // End-to-end through the real JSX transform the bundler uses, against the real
 // router. The router's own unit tests pass props to `h()` directly, so they
@@ -8,9 +8,21 @@ import { bundle, settle, useNavigation } from './helpers.ts';
 // root, and `<Router>` mounted conditionally through `<Show>`.
 const plugin = (await import('../plugin/bsig-jsx.js')).default();
 
+// Fixtures push their mount's unmount here; flushed below so a router never
+// leaks its document/popstate listeners into the next test (or file).
+afterEach(() => {
+  const teardowns = window.__unmounts ?? [];
+  window.__unmounts = [];
+  for (const teardown of teardowns) {
+    try {
+      teardown();
+    } catch {}
+  }
+});
+
 let counter = 0;
 async function run(src, url) {
-  useNavigation(url);
+  useHistory(url);
   document.body.innerHTML = '<div id="app"></div>';
   const out = await plugin.transform(src, `${import.meta.dir}/__router_jsx_${counter++}.tsx`);
   const code = await bundle(
@@ -39,7 +51,7 @@ import { Router, Outlet } from 'bsig/router';
 const About = () => <p class="page">About</p>;
 const Layout = () => <div class="layout"><Outlet/></div>;
 const routes = { path: '/', component: Layout, children: [{ path: '/about', component: About }] };
-mount(document.getElementById('app'), () => <Router routes={routes} />);
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router routes={routes} />));
 `,
       'http://localhost/about',
     );
@@ -54,7 +66,7 @@ import { createRouter, Router, Outlet } from 'bsig/router';
 const About = () => <p class="page">About</p>;
 const Layout = () => <div class="layout"><Outlet/></div>;
 const router = createRouter({ routes: { path: '/', component: Layout, children: [{ path: '/about', component: About }] } });
-mount(document.getElementById('app'), () => <Router router={router} />);
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router router={router} />));
 `,
       'http://localhost/about',
     );
@@ -74,7 +86,7 @@ const routes = { path: '/', component: Layout, children: [
   { path: '/admin', component: Admin },
   { path: '/login', component: Login },
 ] };
-mount(document.getElementById('app'), () => <Router routes={routes} beforeEnter={guard} />);
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router routes={routes} beforeEnter={guard} />));
 `,
       'http://localhost/admin',
     );
@@ -90,7 +102,7 @@ import { Router, Outlet } from 'bsig/router';
 const About = () => <><p class="page">About</p></>;
 const Layout = () => <><nav>nav</nav><Outlet/></>;
 const routes = { path: '/', component: Layout, children: [{ path: '/about', component: About }] };
-mount(document.getElementById('app'), () => <Router routes={routes} />);
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Router routes={routes} />));
 `,
       'http://localhost/about',
     );
@@ -114,7 +126,7 @@ const router = createRouter({ routes: { path: '/', component: Layout, children: 
 ] } });
 window.__router = router;
 window.__show = show;
-mount(document.getElementById('app'), () => <Show when={show.value}><Router router={router} /></Show>);
+(window.__unmounts ??= []).push(mount(document.getElementById('app'), () => <Show when={show.value}><Router router={router} /></Show>));
 `,
       'http://localhost/a',
     );

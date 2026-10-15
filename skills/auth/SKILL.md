@@ -129,7 +129,7 @@ claim about the wire; convert in `onSuccess` if you need real `Date`s.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill auth
-# or: npx -p github:unbiased-dev/bsig#v0.6.2 bsig-auth-skill
+npx -p github:unbiased-dev/bsig#v0.7.0 bsig-skill auth
+# or: npx -p github:unbiased-dev/bsig#v0.7.0 bsig-auth-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```

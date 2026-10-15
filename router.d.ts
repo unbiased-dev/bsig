@@ -80,32 +80,14 @@ export interface NavigateOptions {
 
 export function createRouter(options: RouterOptions): RouterInstance;
 
-/**
- * The subset of the Navigation API's `NavigateEvent` the router uses. Declared
- * structurally so the types do not require a DOM lib that ships
- * `NavigateEvent` (added to lib.dom only in newer TypeScript).
- */
-export interface RouterNavigateEvent {
-  canIntercept: boolean;
-  hashChange: boolean;
-  downloadRequest: unknown;
-  formData: unknown;
-  navigationType: string;
-  destination: { url: string; key: string };
-  signal: AbortSignal;
-  intercept(handlers: {
-    precommitHandler?: (controller: {
-      redirect(path: string, options?: { history?: string }): void;
-    }) => void | Promise<void>;
-    handler?: () => void | Promise<void>;
-  }): void;
-}
-
 export type RouterInstance = {
   RouterView: (props?: unknown) => any;
   Outlet: () => any;
   navigate(to: string, options?: NavigateOptions): Promise<boolean>;
-  handleNavigate(event: RouterNavigateEvent): void;
+  /** Document click interceptor (same-document links). Wired by `<Router />`. */
+  handleClick(event: MouseEvent): void;
+  /** Back/forward handler. Wired by `<Router />`. */
+  handlePopState(): void;
   boot(): Promise<void>;
   Link: (props: LinkProps) => any;
   prefetch(to: string): void;

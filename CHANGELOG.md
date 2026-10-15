@@ -5,6 +5,31 @@ GitHub by tag (`npm install github:unbiased-dev/bsig#vX.Y.Z`), so **the tag is
 the release**; versions below track the tagged releases. Semver-ish: **minor**
 for new capability, **patch** for fixes.
 
+## v0.7.0
+
+**Breaking:** `bsig/router` drops the Navigation API for the History API, so
+routing works identically in every browser (Safari included).
+
+- One code path everywhere: `pushState`/`replaceState`, a `popstate`
+  listener, and a document-level click interceptor (plain `<a>` tags too, not
+  just `<Link>`). No `window.navigation` dependency, no degrade-to-full-load,
+  no setup warning.
+- Guards run before the URL commits, so blocks and redirects never flicker —
+  including on Safari, where the old `precommitHandler` design silently
+  no-op'd and guarded navigations went through.
+- Back/forward re-run guards; a blocked traversal pins the address bar back
+  to the page on screen, and a redirected traversal rewrites the entry.
+- Per-entry scroll keys are stamped onto `history.state` (the History API
+  ships none); push/replace scroll to top, traversals restore the remembered
+  offset, manual scrolling still cancels a restore.
+- API change: `handleNavigate(event)` / `RouterNavigateEvent` are removed;
+  the instance now exposes `handleClick(event)` and `handlePopState()` (wired
+  by `<Router />`, removed on unmount). `navigate()`, `boot()`, `Link`,
+  `prefetch()`, `isActive()`, and `pathname` are unchanged.
+- Tests drive the real History API (no Navigation API mock): 43 happy-dom
+  router tests plus a 22-test real-browser suite covering guard
+  redirect/block and blocked back-navigation through real navigations.
+
 ## Unreleased
 
 Tooling only — no runtime or API changes.
@@ -17,7 +42,15 @@ Tooling only — no runtime or API changes.
   (into `coverage/`); `bun run test:ci` also writes a JUnit `junit.xml`.
 - **Real-browser tests via `Bun.WebView`** (no Playwright): `bun run
   test:browser` boots the runtime in a real browser and drives native clicks.
-  They are opt-in and skipped in the default run.
+  They are opt-in and skipped in the default run. The router has its own
+  browser suite (`test/browser/router.test.mjs`): boot/render over
+  real HTTP, nested params, notFound, native Link clicks with no reload,
+  `navigate()` push/replace (history length), `history.back()` traversal,
+  `isActive()`, boot-time guard redirects, guard redirect/block and blocked
+  back-navigation through real navigations, prefetch
+  (direct + Link hover), lazy placeholder/chunk, `onUnmount` on leave,
+  `matchTree`, `<Router routes={...}/>`, scroll-to-top on push, and a
+  kitchensink driving them together.
 - **100% coverage.** Every shipped module (`runtime`, `router`, `auth`, the
   JSX runtimes, and the plugins) is fully covered by `% Funcs` and `% Lines`;
   `bunfig.toml` keeps a floor so the harness cannot rot.

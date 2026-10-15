@@ -1,30 +1,76 @@
-import { describe, it, expect } from 'bun:test';
-import { settle, useNavigation } from './helpers.ts';
+import { describe, it, expect, afterEach } from 'bun:test';
+import { settle, useHistory } from './helpers.ts';
 
-// bsig/router is built on the Navigation API; happy-dom has none, so
-// `useNavigation` installs the mock from helpers.ts.
+// bsig/router drives the real History API, so there is no Navigation API mock:
+// `useHistory` just points the shared happy-dom window at a URL. Entries
+// persist across tests in this file (happy-dom never resets the stack), so
+// each test pushes its own anchor entry and never traverses past it.
 async function setup(url = 'http://localhost/') {
-  useNavigation(url);
+  useHistory(url);
+  history.pushState({}, '', url);
   const rt = await import('../runtime.js');
   const router = await import('../router.js');
   return { rt, router };
 }
 
 // Mounts a router through <Router/> (the public path) and returns teardown.
+// Teardowns are also flushed in afterEach: a failing test must not leak its
+// document/popstate listeners into the next test's navigations.
+const live = new Set();
+afterEach(() => {
+  for (const teardown of [...live]) {
+    live.delete(teardown);
+    try {
+      teardown();
+    } catch {}
+  }
+});
+
+// Mounts a router through <Router/> (the public path) and returns teardown.
 function mountApp(rt, router, r) {
   const target = document.createElement('div');
   document.body.appendChild(target);
   const unmount = rt.default(target, () => h_(rt, router, r));
-  return {
+  const app = {
     target,
     unmount() {
       unmount();
       target.remove();
     },
   };
+  live.add(app.unmount);
+  return app;
 }
 function h_(rt, router, r) {
   return rt.h(router.Router, { router: r });
+}
+
+// Dispatches a real bubbling click. Returns dispatchEvent's result: false when
+// the router intercepted (preventDefault), true when left to the browser.
+// Only safe for clicks the router prevents or same-document no-ops: happy-dom
+// performs the default navigation for unprevented clicks (even cross-origin),
+// so left-alone cases go through `handleClick` directly with a synthetic event
+// instead — same decision logic, no document load.
+function click(el, init = {}) {
+  return el.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, cancelable: true, ...init }),
+  );
+}
+
+// A synthetic click for decision-table tests: real anchor target, no DOM
+// dispatch, so the browser never navigates.
+function fakeClick(target, init = {}) {
+  return {
+    defaultPrevented: false,
+    button: 0,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    target,
+    preventDefault() {},
+    ...init,
+  };
 }
 
 describe('router: matchTree', () => {
@@ -60,38 +106,21 @@ describe('router: matchTree', () => {
     // its `/:id` child and its exact pattern both reject the extra segment.
     expect(router.matchTree(routes, '/users/42/extra', '/')).toBeNull();
   });
-
-  it('renders an empty outlet for an unmatched path when there is no notFound', async () => {
-    const { rt, router } = await setup('http://localhost/missing');
-    const { h } = rt;
-    const routes = {
-      path: '/',
-      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
-      children: [{ path: '/', component: () => h('p', { class: 'home' }, 'home') }],
-    };
-    // No `notFound` configured: `render` clears the match list (line 160/161).
-    const r = router.createRouter({ routes });
-    const app = mountApp(rt, router, r);
-    await settle();
-    expect(app.target.querySelector('.layout')).toBeTruthy();
-    expect(app.target.querySelector('.home')).toBeNull();
-    expect(r.pathname.value).toBe('/missing');
-    app.unmount();
-  });
 });
 
 describe('router: boot + render', () => {
   it('renders the matched route through the layout outlet', async () => {
-    const { rt, router } = await setup('http://localhost/about');
+    const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
     const About = () => h('p', { class: 'page' }, 'About');
     const Layout = () => h('div', { class: 'layout' }, h(router.Outlet, null));
     const r = router.createRouter({
-      routes: { path: '/', component: Layout, children: [{ path: '/about', component: About }] },
+      routes: { path: '/', component: Layout, children: [{ path: '/', component: () => h('p', { class: 'home' }, 'home') }] },
     });
     const app = mountApp(rt, router, r);
     await settle();
-    expect(app.target.querySelector('.page').textContent).toBe('About');
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    expect(r.pathname.value).toBe('/');
     app.unmount();
   });
 
@@ -140,31 +169,45 @@ describe('router: boot + render', () => {
     app.unmount();
   });
 
-  it('accepts routes directly and installs/removes the navigate listener', async () => {
-    const { rt, router } = await setup('http://localhost/');
+  it('renders an empty outlet for an unmatched path when there is no notFound', async () => {
+    const { rt, router } = await setup('http://localhost/missing');
     const { h } = rt;
     const routes = {
       path: '/',
-      component: () => h('div', null, h(router.Outlet, null)),
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
       children: [{ path: '/', component: () => h('p', { class: 'home' }, 'home') }],
     };
-    const target = document.createElement('div');
-    document.body.appendChild(target);
-    // <Router routes={...}/> creates its own instance and sets activeRouter.
-    const unmount = rt.default(target, () => h(router.Router, { routes }));
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
     await settle();
-    expect(target.querySelector('.home').textContent).toBe('home');
-    expect(window.navigation.listenerCount()).toBe(1);
-    unmount();
-    target.remove();
-    expect(window.navigation.listenerCount()).toBe(0); // listener removed on unmount
+    expect(app.target.querySelector('.layout')).toBeTruthy();
+    expect(app.target.querySelector('.home')).toBeNull();
+    expect(r.pathname.value).toBe('/missing');
+    app.unmount();
   });
-});
 
-describe('router: guards', () => {
-  it('boot-time redirect rewrites the address bar', async () => {
+  it('stamps a key onto an entry that predates the router', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    // An entry pushed outside the router carries no key; boot must adopt it.
+    history.pushState({}, '', '/adopted');
+    const routes = {
+      path: '/',
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
+      children: [{ path: '/adopted', component: () => h('p', { class: 'page' }, 'adopted') }],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(app.target.querySelector('.page').textContent).toBe('adopted');
+    expect(history.state['bsig:key']).toMatch(/^k\d+$/);
+    app.unmount();
+  });
+
+  it('boot-time redirect rewrites the address bar without a new entry', async () => {
     const { rt, router } = await setup('http://localhost/admin');
     const { h } = rt;
+    const before = history.length;
     const routes = {
       path: '/',
       component: () => h('div', null, h(router.Outlet, null)),
@@ -182,45 +225,7 @@ describe('router: guards', () => {
     await settle();
     expect(app.target.querySelector('.login').textContent).toBe('login');
     expect(window.location.pathname).toBe('/login');
-    app.unmount();
-  });
-
-  it('blocks a navigation when a guard returns false', async () => {
-    const { rt, router } = await setup('http://localhost/');
-    const { h } = rt;
-    const routes = {
-      path: '/',
-      component: () => h('div', null, h(router.Outlet, null)),
-      children: [
-        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
-        {
-          path: '/secret',
-          component: () => h('p', { class: 'secret' }, 'secret'),
-          beforeEnter: () => false,
-        },
-      ],
-    };
-    const r = router.createRouter({ routes });
-    const app = mountApp(rt, router, r);
-    await settle();
-    expect(app.target.querySelector('.home').textContent).toBe('home');
-
-    let intercepted = null;
-    r.handleNavigate({
-      canIntercept: true,
-      hashChange: false,
-      downloadRequest: null,
-      formData: null,
-      navigationType: 'push',
-      destination: { url: 'http://localhost/secret', key: 'k1' },
-      signal: new AbortController().signal,
-      intercept(hh) {
-        intercepted = hh;
-      },
-    });
-    await expect(intercepted.precommitHandler({ redirect() {} })).rejects.toThrow();
-    expect(app.target.querySelector('.home').textContent).toBe('home');
-    expect(app.target.querySelector('.secret')).toBeNull();
+    expect(history.length).toBe(before); // rewrite, not a new entry
     app.unmount();
   });
 
@@ -247,46 +252,51 @@ describe('router: guards', () => {
     app.unmount();
   });
 
-  it('redirects an intercepted navigation when a guard rewrites the target', async () => {
-    const { rt, router } = await setup('http://localhost/');
+  it('renders nothing when a guard blocks at boot', async () => {
+    const { rt, router } = await setup('http://localhost/locked');
     const { h } = rt;
     const routes = {
       path: '/',
-      component: () => h('div', null, h(router.Outlet, null)),
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
       children: [
-        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
         {
-          path: '/admin',
-          component: () => h('p', { class: 'admin' }, 'admin'),
-          beforeEnter: () => ({ path: '/login', replace: true }),
+          path: '/locked',
+          component: () => h('p', { class: 'locked' }, 'locked'),
+          beforeEnter: () => false,
         },
-        { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
       ],
     };
     const r = router.createRouter({ routes });
     const app = mountApp(rt, router, r);
     await settle();
+    expect(app.target.querySelector('.layout')).toBeTruthy();
+    expect(app.target.querySelector('.locked')).toBeNull();
+    expect(r.pathname.value).toBe('');
+    app.unmount();
+  });
 
-    let intercepted = null;
-    r.handleNavigate({
-      canIntercept: true,
-      hashChange: false,
-      downloadRequest: null,
-      formData: null,
-      navigationType: 'push',
-      destination: { url: 'http://localhost/admin', key: 'k-admin' },
-      signal: new AbortController().signal,
-      intercept(hh) {
-        intercepted = hh;
-      },
-    });
-    let redirected = null;
-    await intercepted.precommitHandler({
-      redirect(path, opts) {
-        redirected = { path, opts };
-      },
-    });
-    expect(redirected).toEqual({ path: '/login', opts: { history: 'replace' } });
+  it('a navigation that lands first supersedes a slow boot', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    let release;
+    const gate = new Promise((res) => (release = res));
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        { path: '/fast', component: () => h('p', { class: 'fast' }, 'fast') },
+      ],
+    };
+    // The global guard holds every resolution until released.
+    const r = router.createRouter({ routes, beforeEnter: () => gate.then(() => true) });
+    const app = mountApp(rt, router, r);
+    const pending = r.navigate('/fast');
+    release();
+    expect(await pending).toBe(true);
+    await settle();
+    expect(app.target.querySelector('.fast').textContent).toBe('fast');
+    expect(r.pathname.value).toBe('/fast');
     app.unmount();
   });
 
@@ -309,16 +319,438 @@ describe('router: guards', () => {
     const unmount = rt.default(target, () =>
       h(router.Router, { routes, beforeEnter: () => guard }),
     );
+    live.add(() => {
+      unmount();
+      target.remove();
+    });
     await settle();
     expect(target.querySelector('.login').textContent).toBe('login');
     expect(window.location.pathname).toBe('/login');
     unmount();
     target.remove();
   });
+
+  it('accepts routes directly and detaches its listeners on unmount', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
+      ],
+    };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    // <Router routes={...}/> creates its own instance and sets activeRouter.
+    const unmount = rt.default(target, () => h(router.Router, { routes }));
+    live.add(() => {
+      unmount();
+      target.remove();
+    });
+    await settle();
+    expect(target.querySelector('.home').textContent).toBe('home');
+
+    // A stray anchor in the live document proves the click interceptor is
+    // gone after unmount (dispatchEvent returns true = not prevented).
+    const stray = document.createElement('a');
+    stray.href = '/about';
+    document.body.appendChild(stray);
+    unmount();
+    target.remove();
+    expect(click(stray)).toBe(true);
+    stray.remove();
+
+    // Back/forward is dead too: the URL moves but no render runs — a fresh
+    // router boots cleanly at wherever the stack landed.
+    window.happyDOM.setURL('http://localhost/');
+    history.pushState({}, '', '/about');
+    history.back();
+    await settle();
+    expect(window.location.pathname).toBe('/');
+    const target2 = document.createElement('div');
+    document.body.appendChild(target2);
+    const unmount2 = rt.default(target2, () => h(router.Router, { routes }));
+    live.add(() => {
+      unmount2();
+      target2.remove();
+    });
+    await settle();
+    expect(target2.querySelector('.home').textContent).toBe('home');
+    unmount2();
+    target2.remove();
+  });
 });
 
-describe('router: Link + navigate', () => {
-  it('Link sets href/aria-current and navigate() swaps the page', async () => {
+describe('router: navigate', () => {
+  async function navSetup() {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    return { r, app };
+  }
+
+  it('pushes a new entry, swaps the page, and updates the URL', async () => {
+    const { r, app } = await navSetup();
+    const before = history.length;
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    expect(await r.navigate('/about')).toBe(true);
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    expect(r.pathname.value).toBe('/about');
+    expect(history.length).toBe(before + 1);
+    app.unmount();
+  });
+
+  it('replace rewrites the entry instead of pushing', async () => {
+    const { r, app } = await navSetup();
+    const before = history.length;
+    expect(await r.navigate('/about', { replace: true })).toBe(true);
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    expect(history.length).toBe(before);
+    app.unmount();
+  });
+
+  it('blocks when a guard returns false', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/secret',
+          component: () => h('p', { class: 'secret' }, 'secret'),
+          beforeEnter: () => false,
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/secret')).toBe(false);
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    expect(app.target.querySelector('.secret')).toBeNull();
+    expect(window.location.pathname).toBe('/');
+    app.unmount();
+  });
+
+  it('fails when a guard throws', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/boom',
+          component: () => h('p', { class: 'boom' }, 'boom'),
+          beforeEnter: () => {
+            throw new Error('guard blew up');
+          },
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/boom')).toBe(false);
+    expect(window.location.pathname).toBe('/');
+    app.unmount();
+  });
+
+  it('follows a string redirect as a push', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/admin',
+          component: () => h('p', { class: 'admin' }, 'admin'),
+          beforeEnter: () => '/login',
+        },
+        { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    const before = history.length;
+    expect(await r.navigate('/admin')).toBe(true);
+    expect(app.target.querySelector('.login').textContent).toBe('login');
+    expect(window.location.pathname).toBe('/login');
+    expect(history.length).toBe(before + 1);
+    app.unmount();
+  });
+
+  it('follows an object redirect as a replace', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/admin',
+          component: () => h('p', { class: 'admin' }, 'admin'),
+          beforeEnter: () => ({ path: '/login', replace: true }),
+        },
+        { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    const before = history.length;
+    expect(await r.navigate('/admin')).toBe(true);
+    expect(app.target.querySelector('.login').textContent).toBe('login');
+    expect(window.location.pathname).toBe('/login');
+    expect(history.length).toBe(before);
+    app.unmount();
+  });
+
+  it('a slow navigation superseded by a newer one does not commit', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    let release;
+    const gate = new Promise((res) => (release = res));
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/slow',
+          component: () => h('p', { class: 'slow' }, 'slow'),
+          beforeEnter: () => gate.then(() => true),
+        },
+        { path: '/fast', component: () => h('p', { class: 'fast' }, 'fast') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    const stale = r.navigate('/slow');
+    expect(await r.navigate('/fast')).toBe(true);
+    release();
+    expect(await stale).toBe(false);
+    await settle();
+    expect(app.target.querySelector('.fast').textContent).toBe('fast');
+    expect(window.location.pathname).toBe('/fast');
+    app.unmount();
+  });
+});
+
+describe('router: back/forward traversal', () => {
+  it('back() and forward() move through rendered pages', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/about')).toBe(true);
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    history.back();
+    await settle();
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    expect(window.location.pathname).toBe('/');
+    expect(r.pathname.value).toBe('/');
+    history.forward();
+    await settle();
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    app.unmount();
+  });
+
+  it('a blocked traversal pins the URL back to the page on screen', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    // The home guard is open until the test closes it mid-history.
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/',
+          component: () => h('p', { class: 'home' }, 'home'),
+          beforeEnter: () => window.__open !== false,
+        },
+        { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
+      ],
+    };
+    window.__open = true;
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/about')).toBe(true);
+    window.__open = false; // now going back is blocked
+    history.back();
+    await settle();
+    // The browser moved, the guard refused: URL pinned back, page untouched.
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    expect(r.pathname.value).toBe('/about');
+    delete window.__open;
+    app.unmount();
+  });
+
+  it('a guard redirects a traversal by rewriting the entry', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/',
+          component: () => h('p', { class: 'home' }, 'home'),
+          beforeEnter: () => window.__redir ?? true,
+        },
+        { path: '/about', component: () => h('p', { class: 'about' }, 'about') },
+        { path: '/login', component: () => h('p', { class: 'login' }, 'login') },
+      ],
+    };
+    window.__redir = true;
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/about')).toBe(true);
+    window.__redir = '/login'; // the way back now detours
+    history.back();
+    await settle();
+    expect(app.target.querySelector('.login').textContent).toBe('login');
+    expect(window.location.pathname).toBe('/login');
+    delete window.__redir;
+    app.unmount();
+  });
+
+  it('adopts entries pushed outside the router', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
+      children: [{ path: '/', component: () => h('p', { class: 'home' }, 'home') }],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    // External pushes carry no key; landing on them adopts them into the mirror.
+    history.pushState({}, '', '/x');
+    history.pushState({}, '', '/y');
+    history.back();
+    await settle();
+    expect(r.pathname.value).toBe('/x');
+    expect(app.target.querySelector('.layout')).toBeTruthy();
+    history.forward();
+    await settle();
+    expect(r.pathname.value).toBe('/y');
+    history.back();
+    await settle();
+    expect(r.pathname.value).toBe('/x');
+    // Leave the shared stack tidy: a keyed entry with nothing ahead, so the
+    // next test boots onto a clean forward stack.
+    expect(await r.navigate('/')).toBe(true);
+    expect(r.pathname.value).toBe('/');
+    app.unmount();
+  });
+
+  it('a throwing guard fails a traversal like a block', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/bad',
+          component: () => h('p', { class: 'bad' }, 'bad'),
+          beforeEnter: () => {
+            throw new Error('guard blew up');
+          },
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    // Reach the guarded path from outside (navigate() would fail too), then
+    // traverse onto it: the throw pins the URL back to the page on screen.
+    history.pushState({}, '', '/bad');
+    history.pushState({}, '', '/x');
+    history.back();
+    await settle();
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    expect(window.location.pathname).toBe('/');
+    expect(r.pathname.value).toBe('/');
+    // Leave the shared stack tidy for the next test.
+    expect(await r.navigate('/')).toBe(true);
+    app.unmount();
+  });
+
+  it('a superseded traversal does not apply', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    let release;
+    const gate = new Promise((res) => (release = res));
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/',
+          component: () => h('p', { class: 'home' }, 'home'),
+          beforeEnter: () => gate.then(() => true),
+        },
+        { path: '/fast', component: () => h('p', { class: 'fast' }, 'fast') },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(await r.navigate('/fast')).toBe(true);
+    // Move the URL like the browser does on back(), then run the popstate
+    // handler directly so the slow guard is definitely in flight first.
+    history.pushState({}, '', '/');
+    r.handlePopState();
+    expect(await r.navigate('/fast')).toBe(true);
+    release();
+    await settle();
+    expect(app.target.querySelector('.fast').textContent).toBe('fast');
+    expect(r.pathname.value).toBe('/fast');
+    app.unmount();
+  });
+});
+
+describe('router: click interception', () => {
+  async function clickSetup() {
     const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
     const routes = {
@@ -329,6 +761,11 @@ describe('router: Link + navigate', () => {
           null,
           h(router.Outlet, null),
           h(router.Link, { to: '/about', id: 'about-link' }, 'about'),
+          h('a', { href: '/about', id: 'raw-link' }, 'raw'),
+          h('a', { href: 'https://example.com/x', id: 'ext-link' }, 'ext'),
+          h('a', { href: '/about', download: '', id: 'dl-link' }, 'dl'),
+          h('a', { href: '#sec', id: 'hash-link' }, 'hash'),
+          h('a', { href: 'http://[::1', id: 'bad-link' }, 'bad'),
         ),
       children: [
         { path: '/', component: () => h('p', { class: 'home' }, 'home') },
@@ -338,18 +775,115 @@ describe('router: Link + navigate', () => {
     const r = router.createRouter({ routes });
     const app = mountApp(rt, router, r);
     await settle();
+    return { r, app };
+  }
+
+  it('<Link> clicks navigate client-side', async () => {
+    const { r, app } = await clickSetup();
     const link = app.target.querySelector('#about-link');
     expect(link.getAttribute('href')).toBe('/about');
     expect(link.getAttribute('aria-current')).toBe('false');
-    expect(app.target.querySelector('.home').textContent).toBe('home');
-
-    expect(await r.navigate('/about')).toBe(true);
+    expect(click(link)).toBe(false); // intercepted
     await settle();
     expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    expect(r.pathname.value).toBe('/about');
     expect(link.getAttribute('aria-current')).toBe('page');
     app.unmount();
   });
 
+  it('plain anchors are intercepted too', async () => {
+    const { app } = await clickSetup();
+    expect(click(app.target.querySelector('#raw-link'))).toBe(false);
+    await settle();
+    expect(app.target.querySelector('.about').textContent).toBe('about');
+    expect(window.location.pathname).toBe('/about');
+    app.unmount();
+  });
+
+  it('modifier and non-left clicks are left to the browser', async () => {
+    const { r, app } = await clickSetup();
+    const link = app.target.querySelector('#about-link');
+    r.handleClick(fakeClick(link, { metaKey: true }));
+    r.handleClick(fakeClick(link, { button: 1 }));
+    await settle();
+    expect(window.location.pathname).toBe('/');
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    app.unmount();
+  });
+
+  it('targeted and download links are left alone', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    target.appendChild(h('a', { href: '/about', target: '_blank', id: 't' }, 't'));
+    target.appendChild(h('a', { href: '/about', download: '', id: 'd' }, 'd'));
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [{ path: '/', component: () => h('p', { class: 'home' }, 'home') }],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    // Direct calls: a real dispatch would make happy-dom load the target.
+    r.handleClick(fakeClick(target.querySelector('#t')));
+    r.handleClick(fakeClick(target.querySelector('#d')));
+    await settle();
+    expect(window.location.pathname).toBe('/');
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    app.unmount();
+    target.remove();
+  });
+
+  it('external, hash, and malformed hrefs are left alone', async () => {
+    const { r, app } = await clickSetup();
+    r.handleClick(fakeClick(app.target.querySelector('#ext-link')));
+    r.handleClick(fakeClick(app.target.querySelector('#hash-link')));
+    r.handleClick(fakeClick(app.target.querySelector('#bad-link')));
+    await settle();
+    expect(window.location.pathname).toBe('/');
+    expect(app.target.querySelector('.home').textContent).toBe('home');
+    app.unmount();
+  });
+
+  it('same-page clicks stay native', async () => {
+    const { r, app } = await clickSetup();
+    expect(await r.navigate('/about')).toBe(true);
+    // Already on /about: re-clicking its link is a no-op for the router.
+    expect(click(app.target.querySelector('#about-link'))).toBe(true);
+    expect(window.location.pathname).toBe('/about');
+    app.unmount();
+  });
+
+  it('clicks outside anchors do nothing', async () => {
+    const { app } = await clickSetup();
+    expect(click(app.target.querySelector('.home'))).toBe(true);
+    expect(window.location.pathname).toBe('/');
+    app.unmount();
+  });
+
+  it('an already-handled click is ignored', async () => {
+    const { app } = await clickSetup();
+    const seen = [];
+    const stop = (e) => {
+      e.preventDefault();
+      seen.push('first');
+    };
+    document.addEventListener('click', stop, true);
+    try {
+      expect(click(app.target.querySelector('#about-link'))).toBe(false);
+      expect(seen).toEqual(['first']);
+      expect(window.location.pathname).toBe('/');
+    } finally {
+      document.removeEventListener('click', stop, true);
+    }
+    app.unmount();
+  });
+});
+
+describe('router: Link + prefetch + isActive', () => {
   it('prefetch runs guards and component preload', async () => {
     const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
@@ -408,10 +942,38 @@ describe('router: Link + navigate', () => {
     expect(preloads).toBe(3);
     app.unmount();
   });
-});
 
-describe('router: module-level Outlet and Link', () => {
-  it('delegate to the active router', async () => {
+  it('isActive matches exactly, by prefix, and ignores trailing slashes', async () => {
+    const { rt, router } = await setup('http://localhost/users/42');
+    const { h } = rt;
+    const r = router.createRouter({
+      routes: {
+        path: '/',
+        component: () => h('div', null, h(router.Outlet, null)),
+        children: [
+          { path: '/', component: () => h('p', null, 'home') },
+          {
+            path: '/users',
+            component: () => h('div', null, h(router.Outlet, null)),
+            children: [{ path: '/:id', component: () => h('p', null, 'u') }],
+          },
+        ],
+      },
+    });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(r.isActive('/users')).toBe(true);
+    expect(r.isActive('/users/42')).toBe(true);
+    expect(r.isActive('/users/42/')).toBe(true);
+    expect(r.isActive('/')).toBe(false);
+    expect(r.isActive('/about')).toBe(false);
+    expect(await r.navigate('/')).toBe(true);
+    expect(r.isActive('/')).toBe(true);
+    expect(r.isActive('/users')).toBe(false);
+    app.unmount();
+  });
+
+  it('module-level Outlet and Link delegate to the active router', async () => {
     const { rt, router } = await setup('http://localhost/');
     const { h } = rt;
     const routes = {
@@ -571,84 +1133,8 @@ describe('router: lazy', () => {
   });
 });
 
-describe('router: Navigation API fallbacks', () => {
-  it('navigate() falls back to full navigation when the API is absent', async () => {
-    const { router } = await setup('http://localhost/');
-    const r = router.createRouter({
-      routes: { path: '/', component: () => null, children: [] },
-    });
-
-    const saved = window.navigation;
-    const assigns = [];
-    const replaces = [];
-    const origAssign = window.location.assign;
-    const origReplace = window.location.replace;
-    delete window.navigation;
-    window.location.assign = (to) => assigns.push(to);
-    window.location.replace = (to) => replaces.push(to);
-    try {
-      expect(await r.navigate('/x')).toBe(true);
-      expect(await r.navigate('/y', { replace: true })).toBe(true);
-    } finally {
-      window.navigation = saved;
-      window.location.assign = origAssign;
-      window.location.replace = origReplace;
-    }
-    expect(assigns).toEqual(['/x']);
-    expect(replaces).toEqual(['/y']);
-  });
-
-  it('resolves false when a navigation is aborted, and swallows committed rejections', async () => {
-    const { router } = await setup('http://localhost/');
-    const r = router.createRouter({
-      routes: { path: '/', component: () => null, children: [] },
-    });
-    const saved = window.navigation;
-    window.navigation = {
-      navigate: () => ({
-        committed: Promise.reject(new Error('blocked')),
-        finished: Promise.reject(new Error('aborted')),
-      }),
-    };
-    try {
-      expect(await r.navigate('/x')).toBe(false);
-    } finally {
-      window.navigation = saved;
-    }
-  });
-
-  it('warns once when mounting without the Navigation API', async () => {
-    const { rt, router } = await setup('http://localhost/');
-    const { h } = rt;
-    const saved = window.navigation;
-    const origWarn = console.warn;
-    const warned = [];
-    delete window.navigation;
-    console.warn = (...args) => warned.push(args.join(' '));
-
-    const target = document.createElement('div');
-    document.body.appendChild(target);
-    const routes = {
-      path: '/',
-      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
-      children: [],
-    };
-    let unmount;
-    try {
-      unmount = rt.default(target, () => h(router.Router, { routes }));
-      await settle();
-    } finally {
-      unmount?.();
-      target.remove();
-      window.navigation = saved;
-      console.warn = origWarn;
-    }
-    expect(warned.some((w) => w.includes('Navigation API unavailable'))).toBe(true);
-  });
-});
-
 describe('router: scroll restoration', () => {
-  it('re-applies a saved offset on traversal and stops on manual scroll', async () => {
+  it('push scrolls to top and traversal restores the saved offset', async () => {
     const { rt, router } = await setup('http://localhost/a');
     const { h } = rt;
     const routes = {
@@ -663,15 +1149,12 @@ describe('router: scroll restoration', () => {
     const app = mountApp(rt, router, r);
     await settle();
 
-    // A controllable scroll environment: scrollY is a mutable getter and
+    // A controllable scroll environment: scrollY is a mutable value and
     // animation frames are queued so each step can be inspected.
     let scrollY = 0;
     Object.defineProperty(window, 'scrollY', {
       configurable: true,
       get: () => scrollY,
-      set: (v) => {
-        scrollY = v;
-      },
     });
     const origScrollTo = window.scrollTo;
     const scrollCalls = [];
@@ -680,65 +1163,50 @@ describe('router: scroll restoration', () => {
     const rafQueue = [];
     globalThis.requestAnimationFrame = (fn) => rafQueue.push(fn);
     const frame = () => rafQueue.shift()?.();
-    const nav = window.navigation;
-    const savedEntry = nav.currentEntry;
-
-    const dispatch = (type, to, key) => {
-      let handlers;
-      r.handleNavigate({
-        canIntercept: true,
-        hashChange: false,
-        downloadRequest: null,
-        formData: null,
-        navigationType: type,
-        destination: { url: `http://localhost${to}`, key },
-        signal: new AbortController().signal,
-        intercept(hh) {
-          handlers = hh;
-        },
-      });
-      return handlers;
-    };
 
     try {
-      // Leave /a while scrolled down: the offset is remembered under entry k-a.
-      nav.currentEntry = { key: 'k-a' };
+      // Leave /a while scrolled down: the offset is remembered.
       scrollY = 100;
-      dispatch('push', '/b', 'k-b').handler();
-      await settle();
+      await r.navigate('/b');
       expect(app.target.querySelector('.b').textContent).toBe('b');
       expect(scrollCalls).toContainEqual([0, 0]); // push scrolls to top
 
-      // Traverse back: the short page is chased frame by frame...
-      nav.currentEntry = { key: 'k-b' };
-      scrollY = 0; // the fresh render starts at the top
-      dispatch('traverse', '/a', 'k-a').handler();
+      // Traverse back with no room to restore: the chase runs until it gives
+      // up after ~1s of frames.
+      scrollY = 0;
+      history.back();
       await settle();
-      frame();
-      expect(rafQueue.length).toBe(1); // still short, so it schedules again
-      scrollY = 100; // now the offset fits
-      frame();
-      expect(rafQueue.length).toBe(0); // and the chase stops
-
-      // A manual scroll aborts an in-flight restore: the queued step no-ops.
-      nav.currentEntry = { key: 'k-b' };
-      dispatch('traverse', '/a', 'k-a').handler();
-      await settle();
-      window.dispatchEvent(new Event('wheel'));
-      frame();
+      expect(app.target.querySelector('.a').textContent).toBe('a');
+      expect(rafQueue.length).toBe(1);
+      for (let i = 0; i < 60; i++) frame();
       expect(rafQueue.length).toBe(0);
 
-      // If the page never grows, the chase gives up after ~1s of frames.
+      // Back to /b (sync scroll to top), then back to /a with room: one step
+      // meets the remembered offset and stops.
+      scrollY = 100;
+      history.forward();
+      await settle();
+      expect(app.target.querySelector('.b').textContent).toBe('b');
+      history.back();
+      await settle();
+      expect(app.target.querySelector('.a').textContent).toBe('a');
+      expect(rafQueue.length).toBe(1);
+      frame();
+      expect(scrollCalls).toContainEqual([0, 100]);
+      expect(rafQueue.length).toBe(0);
+
+      // A manual scroll aborts an in-flight restore: the queued step no-ops.
       scrollY = 0;
-      nav.currentEntry = { key: 'k-b' };
-      dispatch('traverse', '/a', 'k-a').handler();
-      for (let i = 0; i < 60; i++) frame();
+      history.forward();
+      await settle();
+      expect(rafQueue.length).toBe(1);
+      window.dispatchEvent(new Event('wheel'));
+      frame();
       expect(rafQueue.length).toBe(0);
     } finally {
       delete window.scrollY;
       window.scrollTo = origScrollTo;
       globalThis.requestAnimationFrame = origRaf;
-      nav.currentEntry = savedEntry;
       app.unmount();
     }
   });

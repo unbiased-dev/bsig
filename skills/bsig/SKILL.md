@@ -33,7 +33,7 @@ signal update.
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.6.2
+npm install github:unbiased-dev/bsig#v0.7.0
 ```
 
 ## Bun alternative
@@ -415,8 +415,8 @@ export function Pair() {
 ## Router (`bsig/router`)
 
 Optional, tree-shakeable entry — never part of the runtime bundle unless
-imported. Built on the Navigation API (Chromium; degrades to full navigations
-elsewhere). See `docs/router.md`.
+imported. Built on the History API; works in every browser.
+See `docs/router.md`.
 
 ```tsx
 import { Router, Outlet, Link } from 'bsig/router';

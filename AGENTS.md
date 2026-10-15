@@ -104,16 +104,27 @@ case, it belongs in an opt-in entry — or not at all.
 - The DOM is **happy-dom**, registered globally by `test/setup.ts` and preloaded
   for every file — no per-file jsdom boilerplate. Tests flush with
   `setTimeout(0)`; `test/setup.ts` resets `document.body` between tests.
-- Shared helpers live in `test/helpers.ts` (a Navigation API mock and a
+- Shared helpers live in `test/helpers.ts` (`useHistory()` URL setup and a
   `Bun.build`-based `bundle()`). Node APIs are avoided in tests; use `Bun.file`/
-  `Bun.write`, `import.meta.dir`, `Bun.$`, and `Bun.build` instead.
+  `Bun.write`, `import.meta.dir`, `Bun.$`, and `Bun.build` instead. The router
+  drives the real History API: entries persist across tests in a file
+  (happy-dom never resets the stack), so each router test pushes its own anchor
+  entry, never traverses past its own entries, and registers teardowns for the
+  `afterEach` flush (a leaked document/popstate listener would hijack later
+  tests). happy-dom performs default anchor navigations (even cross-origin),
+  so left-alone click cases call `router.handleClick` directly instead of
+  dispatching, and `replaceState` on a back-landed entry breaks happy-dom's
+  `forward()` — adopted entries are tracked without stamping for that reason.
 - Cover unit behavior, the **real transform chain** (`test/tsx-chain.test.mjs`),
   tree-shaking, and lifecycle/cleanup edge cases. Runtime cleanup changes
   should add a regression to `test/runtime2.test.mjs`.
 - Real-browser tests (`test/browser/`) use the built-in `Bun.WebView` instead of
   Playwright and are **opt-in**: `bun run test:browser`. They skip unless
   `BUN_BSIG_BROWSER=1` and a browser can be spawned, so the default run stays
-  fast.
+  fast. `router.test.mjs` there serves fixtures over node:http (SPA fallback)
+  — not `Bun.serve`, whose `Response` the happy-dom preload shadows — and
+  drives them with native clicks plus `evaluate`, including guard
+  redirect/block and blocked back-navigation through real navigations.
 - Keep the demo honest: `cd demo && npm run typecheck && npm run build`.
 
 ## Docs and skills

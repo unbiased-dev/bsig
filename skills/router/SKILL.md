@@ -10,12 +10,12 @@ point (guide: `docs/router.md`). Unlike URL-resolution routers it never rebuilds
 the tree from the root — **only the outlet slot whose route changed remounts**,
 so shared parents (layouts, sidebars, scroll state) stay mounted. Matching is
 powered by vendored [regexparam](https://github.com/lukeed/regexparam). URL and
-history handling is built on the [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API):
-one `navigate` event listener (wired by `<Router />`) handles link clicks,
-programmatic navigation, and back/forward; `router.navigate()` just calls
-`navigation.navigate()`. Guards and redirects run in the event's
-`precommitHandler` (before the URL commits); a guard returning `false` cancels
-the navigation by rejecting.
+history handling is built on the History API (`pushState`/`replaceState`, a
+`popstate` listener, and a document-level click interceptor), so it behaves
+identically in every browser — Safari, Firefox, Chromium, WebViews — with no
+Navigation API dependency. Guards run before the URL commits, so blocks and
+redirects never flicker; per-entry scroll keys are stamped onto
+`history.state`.
 
 This is **bsig**, not React and not the older sigwork API: components run once,
 and the JSX plugin auto-thunks dynamic expressions — write plain values
@@ -49,8 +49,9 @@ mount(document.getElementById('app')!, () => <Router routes={routes} />);
 ```
 
 `<Router />` mounts the tree, starts at `window.location.pathname`, and wires up
-the Navigation API's `navigate` event (link clicks, programmatic navigation, and
-back/forward) — no manual `navigate()` bootstrap needed.
+a document click interceptor plus a `popstate` listener (link clicks,
+programmatic navigation, and back/forward) — no manual `navigate()` bootstrap
+needed.
 
 ## Core API
 
@@ -67,11 +68,11 @@ back/forward) — no manual `navigate()` bootstrap needed.
   each layout renders exactly one. Use the JSX tag, not `{Outlet()}` (the tag
   creates the component context that `provide`/`inject` and lifecycles need).
 - **`createRouter({ routes, notFound, beforeEnter })`** →
-  `{ RouterView, Outlet, navigate, boot, handleNavigate, prefetch, isActive,
-  Link, pathname }`.
+  `{ RouterView, Outlet, navigate, boot, handleClick, handlePopState, prefetch,
+  isActive, Link, pathname }`.
 - **`router.navigate(to, { replace? })`** → `Promise<boolean>` (`false` =
-  blocked/superseded). Delegates to `navigation.navigate()`; guards run in the
-  `navigate` event's `precommitHandler`.
+  blocked/superseded). Runs guards, then commits with `pushState`
+  (`replaceState` for `replace`).
 - **`router.pathname`** — a reactive signal of the current pathname. Read
   `router.pathname.value` in JSX to stay live.
 - **`router.isActive(to)`** — whether `to` is the active path.
@@ -141,12 +142,13 @@ Hooks may be async.
 - `<Router />` runs its setup eagerly (initial boot + `navigate` listener)
   because bsig only flushes `onMount` for the root component and
   dynamically-inserted children.
-- **Navigation API only** — no History-API fallback. Relies on
-  `window.navigation` (Baseline 2026). Where it is missing the router still
-  boots/renders, warns once, and `navigate()` degrades to a full navigation.
-  The `navigate` event does not fire on first load, so `<Router />` renders the
-  initial path explicitly. Reloads, hash-only changes, downloads, and form
-  submissions are left to the browser (not intercepted).
+- **Works in every browser** — History API only (`pushState`/`replaceState` +
+  `popstate`, Baseline since IE10), no Navigation API dependency. Same-document
+  link clicks are intercepted at the document level (plain `<a>` tags too, not
+  just `<Link>`); modifier/non-left clicks, `target`/`download` links, external
+  origins, and same-page (hash) targets are left to the browser. The
+  `popstate` event does not fire on first load, so `<Router />` renders the
+  initial path explicitly. Reloads are left to the browser (boot re-runs).
 - **Components run once**; a `:param` change within the same route remounts
   that leaf (the outlet key includes params) rather than re-rendering the
   instance.
@@ -158,7 +160,7 @@ Hooks may be async.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.6.2 bsig-skill router
-# or: npx -p github:unbiased-dev/bsig#v0.6.2 bsig-router-skill
+npx -p github:unbiased-dev/bsig#v0.7.0 bsig-skill router
+# or: npx -p github:unbiased-dev/bsig#v0.7.0 bsig-router-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```

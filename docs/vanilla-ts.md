@@ -15,7 +15,7 @@ the setup below passes them as-is, with no `h` import in any file.
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
 npm install
-npm install github:unbiased-dev/bsig#v0.6.2
+npm install github:unbiased-dev/bsig#v0.7.0
 ```
 
 ## 2. Remove the counter boilerplate

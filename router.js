@@ -4,10 +4,12 @@
  * runtime does not import it, and a build that never imports `bsig/router`
  * drops everything here (package.json declares `sideEffects: false`).
  *
- * Built on the Navigation API (`window.navigation`): interception, precommit
- * guards, traversal entries and per-entry scroll keys all come from it. Where
- * it is unavailable the router still boots and renders (boot uses the History
- * API directly); it just cannot intercept in-page navigations and warns once.
+ * Built on the History API (`pushState`/`replaceState`, a `popstate`
+ * listener, and a document-level click interceptor), so it behaves identically
+ * in every browser — Safari, Firefox, Chromium, WebViews — with one code path
+ * and no Navigation API dependency. Guards run before the URL commits, so
+ * blocks and redirects never flicker. Per-entry scroll keys are stamped onto
+ * `history.state` (the History API ships none of its own).
  */
 import { h, signal, provide, inject, onUnmount } from './runtime.js';
 // Vendored (MIT) so the router stays dependency-free; see vendor/regexparam.js.
@@ -112,7 +114,7 @@ export function createRouter(options) {
   // push/replace, and re-apply the remembered offset on traversal until the
   // page is tall enough to hold it.
   const history_api = globalThis.history;
-  if (history_api) history_api.scrollRestoration = 'manual';
+  history_api.scrollRestoration = 'manual';
 
   const scroll_positions = new Map();
   let scroll_token = 0;
@@ -162,6 +164,31 @@ export function createRouter(options) {
     }
   };
 
+  // The History API has no per-entry keys, so stamp our own onto
+  // `history.state`. Keys drive scroll restoration; entries the router did not
+  // create are tracked with memory-only keys (see `traverse`).
+  const STATE_KEY = 'bsig:key';
+  let key_seq = 0;
+  const new_key = () => `k${++key_seq}`;
+  let current_key = null;
+  let current_href = '/';
+  // Guards are async: a slow navigation superseded by a newer one must not
+  // commit. Every navigation takes a token; only the latest may apply.
+  let nav_token = 0;
+
+  const entry_key = () => {
+    const s = history_api.state;
+    return s && typeof s === 'object' ? s[STATE_KEY] : undefined;
+  };
+
+  const stamp = (key) => {
+    const s = history_api.state;
+    history_api.replaceState(
+      s && typeof s === 'object' ? { ...s, [STATE_KEY]: key } : { [STATE_KEY]: key },
+      '',
+    );
+  };
+
   const collectGuards = (target) => {
     const guards = [];
     if (options.beforeEnter) guards.push(options.beforeEnter);
@@ -195,11 +222,19 @@ export function createRouter(options) {
     return null;
   };
 
-  const resolve = async (path, seen, replace) => {
+  // Split a target into the pathname matching and guards see and the full
+  // same-origin href the address bar shows.
+  const split = (to) => {
+    const url = new URL(to, window.location.href);
+    return { path: url.pathname, href: url.pathname + url.search };
+  };
+
+  const resolve = async (to, seen, replace) => {
+    const { path, href } = split(to);
     if (seen.has(path)) return null;
     seen.add(path);
     const verdict = await runGuards(collectGuards(path), path, pathname.value);
-    if (verdict === null) return { path, replace };
+    if (verdict === null) return { path, href, replace };
     if (verdict.type === 'block') return null;
     return resolve(verdict.path, seen, verdict.replace);
   };
@@ -209,74 +244,125 @@ export function createRouter(options) {
     pathname.value = target.path;
   };
 
+  const commit_push = (target) => {
+    scroll_positions.set(current_key, window.scrollY);
+    const key = new_key();
+    history_api.pushState({ [STATE_KEY]: key }, '', target.href);
+    current_key = key;
+    current_href = target.href;
+    apply(target);
+    restore_scroll(0);
+  };
+
+  const commit_replace = (target) => {
+    scroll_positions.set(current_key, window.scrollY);
+    const key = new_key();
+    history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+    // Boot always runs first, so there is an entry to rewrite.
+    current_key = key;
+    current_href = target.href;
+    apply(target);
+    restore_scroll(0);
+  };
+
   const boot = async () => {
-    const start = window.location.pathname;
-    const target = await resolve(start, new Set(), false);
-    if (!target) return;
-    if (target.path !== start) {
-      // A boot-time guard redirect (e.g. unclaimed → Claim) renders the
+    const token = ++nav_token;
+    const here = split(window.location.pathname + window.location.search);
+    let key = entry_key();
+    if (!key) {
+      key = new_key();
+      stamp(key);
+    }
+    current_key = key;
+    current_href = here.href;
+    const target = await resolve(here.href, new Set(), false);
+    if (token !== nav_token || !target) return;
+    if (target.href !== here.href) {
+      // A boot-time guard redirect (e.g. signed-out → Login) renders the
       // target, so the address bar must agree with it. A rewrite, not a new
       // entry — the user never navigated anywhere.
-      history_api.replaceState(null, '', target.path);
+      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+      current_href = target.href;
     }
     apply(target);
   };
 
-  const navigate = (to, { replace = false } = {}) => {
-    const nav = window.navigation;
-    if (!nav) {
-      // No Navigation API: fall back to a full navigation so links still work.
-      if (replace) window.location.replace(to);
-      else window.location.assign(to);
-      return Promise.resolve(true);
-    }
-    const res = nav.navigate(to, {
-      history: replace ? 'replace' : 'push',
-    });
-    res.committed?.catch(() => {});
-    return res.finished.then(
-      () => true,
-      () => false,
-    );
+  const navigate = async (to, { replace = false } = {}) => {
+    const token = ++nav_token;
+    // A throwing guard fails the navigation, like a block.
+    const target = await resolve(to, new Set(), replace).catch(() => null);
+    if (token !== nav_token || target === null) return false;
+    if (target.replace) commit_replace(target);
+    else commit_push(target);
+    return true;
   };
 
-  const handleNavigate = (event) => {
-    if (
-      !event.canIntercept ||
-      event.hashChange ||
-      event.downloadRequest !== null ||
-      event.formData ||
-      event.navigationType === 'reload'
-    )
+  const traverse = async () => {
+    const token = ++nav_token;
+    const here = split(window.location.pathname + window.location.search);
+    let key = entry_key();
+    if (!key) {
+      // An entry that predates the router (or was pushed outside it): track it
+      // with a memory-only key rather than stamping state onto an entry the
+      // router does not own. Adopted entries restore scroll-to-top; entries the
+      // router creates carry their keys in `history.state`.
+      key = new_key();
+    }
+    const target = await resolve(here.path, new Set(), false).catch(() => null);
+    if (token !== nav_token) return;
+    if (target === null) {
+      // Blocked after the browser already moved: pin the URL back to the page
+      // on screen. Display and address bar agree again; the entry keeps its
+      // URL, so a later visit re-runs guards.
+      history_api.replaceState({ [STATE_KEY]: key }, '', current_href);
       return;
+    }
+    if (target.href !== here.href) {
+      // A guard redirected the traversal: rewrite the entry in place. The
+      // rewritten entry has no remembered offset (any saved one belongs to the
+      // pre-redirect page).
+      scroll_positions.set(current_key, window.scrollY);
+      scroll_positions.delete(key);
+      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+      current_key = key;
+      current_href = target.href;
+      apply(target);
+      restore_scroll(0);
+      return;
+    }
+    scroll_positions.set(current_key, window.scrollY);
+    current_key = key;
+    current_href = here.href;
+    apply(target);
+    restore_scroll(scroll_positions.get(key) ?? 0);
+  };
 
-    const to = new URL(event.destination.url).pathname;
-    const leaving_key = window.navigation.currentEntry?.key;
-    const leaving_y = window.scrollY;
-    let target = null;
+  const handleClick = (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const origin = event.target;
+    const anchor =
+      origin && typeof origin.closest === 'function' ? origin.closest('a[href]') : null;
+    if (!anchor) return;
+    if (anchor.target && anchor.target !== '_self') return;
+    if (anchor.hasAttribute('download')) return;
+    let url;
+    try {
+      url = new URL(anchor.getAttribute('href'), window.location.href);
+    } catch {
+      return;
+    }
+    if (url.origin !== window.location.origin) return;
+    const here = window.location;
+    // Same-page targets (hash links, re-clicks) stay native: the browser
+    // scrolls without history churn.
+    if (url.pathname === here.pathname && url.search === here.search) return;
+    event.preventDefault();
+    void navigate(url.pathname + url.search);
+  };
 
-    event.intercept({
-      async precommitHandler(controller) {
-        target = await resolve(to, new Set(), false);
-        if (event.signal.aborted) return;
-        if (target === null) throw new Error('blocked');
-        if (target.path !== to)
-          controller.redirect(
-            target.path,
-            target.replace ? { history: 'replace' } : undefined,
-          );
-      },
-      handler() {
-        if (event.signal.aborted) return;
-        if (leaving_key) scroll_positions.set(leaving_key, leaving_y);
-        apply(target ?? { path: to });
-        restore_scroll(
-          event.navigationType === 'traverse'
-            ? (scroll_positions.get(event.destination.key) ?? 0)
-            : 0,
-        );
-      },
-    });
+  const handlePopState = () => {
+    void traverse();
   };
 
   const prefetching = new Set();
@@ -364,7 +450,8 @@ export function createRouter(options) {
     RouterView,
     Outlet,
     navigate,
-    handleNavigate,
+    handleClick,
+    handlePopState,
     boot,
     Link,
     prefetch,
@@ -402,15 +489,15 @@ export const Router = (props) => {
       beforeEnter: asGuard(props.beforeEnter),
     });
   activeRouter = router;
-  const nav = window.navigation;
-  if (nav) {
-    nav.addEventListener('navigate', router.handleNavigate);
-    onUnmount(() => nav.removeEventListener('navigate', router.handleNavigate));
-  } else if (typeof console !== 'undefined') {
-    console.warn(
-      '[bsig/router] Navigation API unavailable; in-page links will not be intercepted.',
-    );
-  }
+  // One document-level click interceptor owns every same-document link (plain
+  // anchors too, not just `<Link>`); `popstate` owns back/forward. Both are
+  // removed when the router unmounts.
+  document.addEventListener('click', router.handleClick);
+  window.addEventListener('popstate', router.handlePopState);
+  onUnmount(() => {
+    document.removeEventListener('click', router.handleClick);
+    window.removeEventListener('popstate', router.handlePopState);
+  });
   router.boot();
   // Render the root layout in `<Router />`'s own context. `h(router.RouterView)`
   // returns the layout through RouterView's array return, so the layout's

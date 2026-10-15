@@ -5,10 +5,11 @@ lazy pages, and per-entry scroll restoration. It lives in its own module —
 importing `bsig/router` pulls it in, and a build that never imports it leaves
 it (and its vendored path matcher) out of the bundle entirely.
 
-It is built on the browser's [Navigation API](https://developer.mozilla.org/docs/Web/API/Navigation_API)
-(`window.navigation`), which is currently Chromium-only. Where it is missing
-the router still boots and renders, but in-page links are not intercepted; it
-logs a warning once. `navigate()` degrades to a full page navigation.
+It is built on the browser's History API (`pushState`/`replaceState`, a
+`popstate` listener, and a document-level click interceptor), so it works
+identically in every browser — Safari, Firefox, Chromium, WebViews — with one
+code path and no Navigation API dependency. Guards run before the URL commits,
+so blocks and redirects never flicker.
 
 ## 1. Set up routes
 
@@ -172,7 +173,7 @@ const notFound: Route = { path: '', component: NotFound };
 | `Router` | Mounts the router and the root layout. Props: `routes`, `notFound?`, `beforeEnter?`, `router?`. |
 | `Outlet` | Renders the route matched at this nesting depth. |
 | `Link` | Navigation link with `aria-current` and prefetch. |
-| `createRouter({ routes, notFound?, beforeEnter? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleNavigate`. |
+| `createRouter({ routes, notFound?, beforeEnter? })` | Imperative instance: `navigate`, `prefetch`, `isActive`, `pathname`, `boot`, `handleClick`, `handlePopState`. |
 | `lazy(loader, loading?)` | Async route component with `.preload()`. |
 | `matchTree(routes, pathname, base)` | Pure matcher; returns the matched chain or `null`. |
 | `Route`, `RouteProps`, `MatchedRoute` | Types. |
@@ -181,4 +182,6 @@ const notFound: Route = { path: '', component: NotFound };
 
 Scroll restoration is managed manually (`history.scrollRestoration =
 'manual'`): new entries scroll to top, back/forward restore the offset you left
-each entry at, and manual scrolling during restore cancels it.
+each entry at, and manual scrolling during restore cancels it. Per-entry keys
+are stamped onto `history.state`; back/forward run guards again, and a blocked
+traversal pins the address bar back to the page on screen.
