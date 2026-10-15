@@ -106,6 +106,16 @@ describe('router: matchTree', () => {
     // its `/:id` child and its exact pattern both reject the extra segment.
     expect(router.matchTree(routes, '/users/42/extra', '/')).toBeNull();
   });
+
+  it('keeps malformed percent escapes instead of throwing', async () => {
+    const { router } = await setup();
+    const chain = router.matchTree(
+      [{ path: '/users/:id', component: () => null }],
+      '/users/%E0%A4%A',
+      '/',
+    );
+    expect(chain[0].params.id).toBe('%E0%A4%A');
+  });
 });
 
 describe('router: boot + render', () => {
@@ -272,6 +282,48 @@ describe('router: boot + render', () => {
     expect(app.target.querySelector('.layout')).toBeTruthy();
     expect(app.target.querySelector('.locked')).toBeNull();
     expect(r.pathname.value).toBe('');
+    app.unmount();
+  });
+
+  it('a throwing guard at boot does not reject and leaves the outlet empty', async () => {
+    const { rt, router } = await setup('http://localhost/admin');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/admin',
+          component: () => h('p', { class: 'admin' }, 'admin'),
+          beforeEnter: () => {
+            throw new Error('guard blew up');
+          },
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    await r.boot(); // must resolve, not reject
+    expect(r.pathname.value).toBe('');
+  });
+
+  it('renders a malformed percent escape in a param instead of failing boot', async () => {
+    const { rt, router } = await setup('http://localhost/users/%E0%A4%A');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', { class: 'layout' }, h(router.Outlet, null)),
+      children: [
+        {
+          path: '/users/:id',
+          component: ({ params }) => h('p', { class: 'user' }, params.id),
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    expect(app.target.querySelector('.user').textContent).toBe('%E0%A4%A');
+    expect(r.pathname.value).toBe('/users/%E0%A4%A');
     app.unmount();
   });
 
@@ -617,6 +669,39 @@ describe('router: back/forward traversal', () => {
     expect(window.location.pathname).toBe('/about');
     expect(r.pathname.value).toBe('/about');
     delete window.__open;
+    app.unmount();
+  });
+
+  it('a blocked traversal preserves the entry state payload', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', { class: 'home' }, 'home') },
+        {
+          path: '/foreign',
+          component: () => h('p', { class: 'foreign' }, 'foreign'),
+          beforeEnter: () => window.__open !== false,
+        },
+      ],
+    };
+    window.__open = true;
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    // Adopt a foreign entry carrying a payload, then move off it.
+    history.pushState({ marker: 1 }, '', '/foreign');
+    history.pushState({}, '', '/x');
+    window.__open = false; // the way back is now blocked
+    history.back();
+    await settle();
+    expect(window.location.pathname).toBe('/');
+    expect(history.state.marker).toBe(1); // payload survived the pin
+    delete window.__open;
+    // Leave the shared stack tidy for the next test.
+    expect(await r.navigate('/')).toBe(true);
     app.unmount();
   });
 

@@ -40,7 +40,13 @@ const matcher = (path, loose) => {
     const params = {};
     for (let i = 0; i < keys.length; i++) {
       const v = m[i + 1];
-      if (v !== undefined) params[keys[i]] = decodeURIComponent(v);
+      // Malformed escapes in the URL (`%`, `%zz`) must not throw mid-render.
+      if (v !== undefined)
+        try {
+          params[keys[i]] = decodeURIComponent(v);
+        } catch {
+          params[keys[i]] = v;
+        }
     }
     return { params };
   };
@@ -141,12 +147,11 @@ export function createRouter(options) {
     return s && typeof s === 'object' ? s[STATE_KEY] : undefined;
   };
 
-  const stamp = (key) => {
+  // Merge a key into whatever state the entry already carries, so rewrites
+  // never drop a payload pushed by the app (or by another router).
+  const state_with_key = (key) => {
     const s = history_api.state;
-    history_api.replaceState(
-      s && typeof s === 'object' ? { ...s, [STATE_KEY]: key } : { [STATE_KEY]: key },
-      '',
-    );
+    return { ...(s && typeof s === 'object' ? s : null), [STATE_KEY]: key };
   };
 
   const collectGuards = (target) => {
@@ -231,17 +236,18 @@ export function createRouter(options) {
     let key = entry_key();
     if (!key) {
       key = new_key();
-      stamp(key);
+      history_api.replaceState(state_with_key(key), '');
     }
     current_key = key;
     current_href = here.href;
-    const target = await resolve(here.href, new Set(), false);
+    // A throwing guard fails the boot, like a blocked navigation.
+    const target = await resolve(here.href, new Set(), false).catch(() => null);
     if (token !== nav_token || !target) return;
     if (target.href !== here.href) {
       // A boot-time guard redirect (e.g. signed-out → Login) renders the
       // target, so the address bar must agree with it. A rewrite, not a new
       // entry — the user never navigated anywhere.
-      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+      history_api.replaceState(state_with_key(key), '', target.href);
       current_href = target.href;
     }
     apply(target);
@@ -274,7 +280,7 @@ export function createRouter(options) {
       // Blocked after the browser already moved: pin the URL back to the page
       // on screen. Display and address bar agree again; the entry keeps its
       // URL, so a later visit re-runs guards.
-      history_api.replaceState({ [STATE_KEY]: key }, '', current_href);
+      history_api.replaceState(state_with_key(key), '', current_href);
       return;
     }
     if (target.href !== here.href) {
@@ -283,7 +289,7 @@ export function createRouter(options) {
       // pre-redirect page).
       scroll_positions.set(current_key, window.scrollY);
       scroll_positions.delete(key);
-      history_api.replaceState({ [STATE_KEY]: key }, '', target.href);
+      history_api.replaceState(state_with_key(key), '', target.href);
       current_key = key;
       current_href = target.href;
       apply(target);
