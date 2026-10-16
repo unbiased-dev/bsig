@@ -75,6 +75,9 @@ export function For<T>(
   renderFn: (item: T, index: number) => any
 ): any;
 
+// `is` must be a thunk returning the component (`() => Pane`). The JSX plugin
+// wraps `is={...}` values automatically; a hand-written `h()` call that passes
+// a raw component function invokes it with no props and renders nothing useful.
 export function Component(props: BsProps & { is: any }): any;
 
 export type TransitionClasses = [active: string, from: string, to: string];

@@ -17,7 +17,12 @@ const tick = () => {
   while (queue.size) {
     const runs = [...queue];
     queue.clear();
-    runs.forEach((fn) => fn());
+    // One throwing effect must not skip its siblings or leave isScheduled
+    // stuck true (which would silently disable every later update). Surface
+    // the error as an uncaught microtask error, outside this loop.
+    for (const fn of runs) {
+      try { fn(); } catch (e) { queueMicrotask(() => { throw e; }); }
+    }
   }
   isScheduled = false;
 };
@@ -44,8 +49,10 @@ export const effect = (fn, is_scope = false) => {
     teardown();
     const prev = activeEffect;
     activeEffect = run;
-    cleanup = fn();
-    activeEffect = prev;
+    // Restore the tracker even when fn throws: on the initial call the throw
+    // propagates (creation should fail loudly), but a stale activeEffect
+    // would otherwise subscribe later top-level reads to a dead effect.
+    try { cleanup = fn(); } finally { activeEffect = prev; }
   };
   const stop = () => {
     if (stopped) return;
@@ -111,8 +118,10 @@ export const signal = (value) => {
 export const untrack = (fn) => {
   const prev = activeEffect;
   activeEffect = null;
-  const result = fn();
-  activeEffect = prev;
+  // finally: a throwing fn must not leave tracking disabled for the rest of
+  // the enclosing effect (every later read would miss its subscription).
+  let result;
+  try { result = fn(); } finally { activeEffect = prev; }
   return result;
 };
 
@@ -133,7 +142,9 @@ const notify = (subs, key) => {
 const reactiveCache = new WeakMap();
 export const reactive = (obj) => {
   if (reactiveCache.has(obj)) return reactiveCache.get(obj);
-  const subs = {};
+  // Null-prototype: keys like toString/constructor/__proto__ must be plain
+  // own keys, not inherited values from Object.prototype.
+  const subs = Object.create(null);
   const proxy = new Proxy(obj, {
     get(t, key) {
       track((subs[key] ??= new Set()));
@@ -207,6 +218,10 @@ export const h = (tag, props, ...children) => {
     if (isNode(el) || isFn(el)) {
       el.$c = ctx;
       el.$s = stop;
+      // Rebuild factory: a removed component node is stopped for good
+      // (teardown dropped its subscriptions), so `revive` rebuilds it from
+      // these captured args when the retained node is re-inserted.
+      el.$r = () => h(tag, props);
       if (!ctx.q) {
         ctx.q = true;
         pendingHooks++;
@@ -256,21 +271,36 @@ const fireMounts = (node, force) => {
   }
 };
 
+// A component node removed from the tree was stopped by `remove` ($d): its
+// scope dropped every subscription and ran cleanup, so it cannot be brought
+// back in place. `$r` is the rebuild factory `h` stamped — resolve a fresh
+// subtree so a re-inserted retained reference (prebuilt Show/If children,
+// stored nodes returned from user thunks) is live again: bindings update and
+// onMount refires, exactly like the thunk path, with a fresh node identity.
+// The rebuild is re-resolved (a component may return a node, thunk, or array)
+// and a pass-through that hands back the same node is inserted as-is.
+const revive = (node) => (node.$d && node.$r ? node.$r() : node);
+
 // Turn a dynamic child's value into concrete nodes. Arrays are lists and
 // functions are thunks, so resolve both recursively: a fragment layout's
 // outlet reaches its page through `Outlet -> RouteNode -> page`, each adding
 // a thunk/array layer. A single unwrap pass left the deepest thunk
 // stringified as text.
 const resolveChild = (value, out) => {
-  if (value === null || value === undefined || value === false) return out;
+  // Booleans render nothing (both true and false), matching JSX expectation;
+  // 0 and '' are text and must not be skipped.
+  if (value == null || typeof value === 'boolean') return out;
   if (Array.isArray(value)) value.forEach((v) => resolveChild(v, out));
   else if (isFn(value)) resolveChild(value(), out);
-  else out.push(isNode(value) ? value : document.createTextNode(String(value)));
+  else {
+    const v = isNode(value) ? revive(value) : document.createTextNode(String(value));
+    isNode(v) ? out.push(v) : resolveChild(v, out);
+  }
   return out;
 };
 
 const append = (parent, child) => {
-  if (child === null || child === undefined || child === false) return null;
+  if (child == null || typeof child === 'boolean') return null;
   if (Array.isArray(child)) {
     // A component may return an array (e.g. a provider that must not be
     // stamped by the outer `h()`); treat it as a list of children.
@@ -331,19 +361,23 @@ const append = (parent, child) => {
       });
     }, true);
     return outer;
-  } else if (isNode(child)) parent.appendChild(child);
-  else parent.appendChild(document.createTextNode(String(child)));
+  } else {
+    const n = isNode(child) ? revive(child) : document.createTextNode(String(child));
+    isNode(n) ? parent.appendChild(n) : append(parent, n);
+  }
   return null;
 };
 
 const remove = (node, countable = true) => {
   node.$s?.();
-  // Unfiring allows reinsertion to remount; re-count so the hook walk
-  // is not pruned while a pending hook exists. Terminal unmounts pass
-  // countable=false since those trees can never remount.
-  if (countable && node.$c && node.$c.f) {
-    node.$c.f = false;
-    pendingHooks++;
+  // Unfiring leaves the node stopped; the `$d` marker routes any later
+  // re-insertion through `revive` (fresh rebuild) instead of refiring hooks
+  // over dead bindings. The rebuild counts its own pending hooks, so the
+  // unfire does not. Terminal unmounts (countable=false) do not unfire: only
+  // a retained reference can bring the tree back, and that also revives.
+  if (node.$c) {
+    if (countable && node.$c.f) node.$c.f = false;
+    node.$d = true;
   }
   node.$l?.(() => node.remove());
   if (!node.$l) node.remove();
@@ -361,11 +395,21 @@ const render = (fn, ...data) => {
 
 /*----- Control flow -----*/
 // Compiler guarantees thunks: cond/renderFn/fallback are () => ... (or static fallback node).
+// Each activation re-resolves the branch: thunked branches build fresh nodes,
+// and a retained prebuilt component reference is rebuilt by `revive` on
+// re-insert — the branch is live again (bindings update, onMount refires),
+// with a fresh node identity. A static fallback node is reused as-is.
 export const If = (cond, renderFn, fallback = null) => {
   let cached, current;
   return () => {
     const show = cond();
     if (show !== current) {
+      // Stop the branch we are leaving. `render` stamps the branch stop on the
+      // value it returns; for arrays (Show's children are always one) removal
+      // is per node and never calls the array's `$s`, so effects created
+      // inside the branch would leak and keep updating detached nodes. `stop`
+      // is idempotent, so the later remove-driven `$s` (nodes only) is a no-op.
+      cached?.$s?.();
       cached = show ? render(renderFn) : isFn(fallback) ? render(fallback) : fallback;
     }
     current = show;
@@ -386,7 +430,11 @@ export const For = (list, key, renderFn) => {
   return () => {
     const next = new Map();
     const nodes = (isFn(list) ? list() : list.value || list).map((item, index) => {
-      const idx = isFn(key) ? key(item, index) : key ? item[key] : item;
+      const raw = isFn(key) ? key(item, index) : key ? item[key] : item;
+      // A duplicate key handed out this pass gets a one-off key: it cannot
+      // share the first entry's node, and its ambiguity means no stable
+      // identity exists to reuse, so it is rebuilt on every update.
+      const idx = next.has(raw) ? Symbol() : raw;
       let node = cache.get(idx);
       if (!node) node = render(renderFn, item, index);
       next.set(idx, node);

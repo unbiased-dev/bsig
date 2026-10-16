@@ -1105,6 +1105,37 @@ describe('router: Link + prefetch + isActive', () => {
     app.unmount();
   });
 
+  it('prefetch swallows loader errors and frees the in-flight slot', async () => {
+    const { rt, router } = await setup('http://localhost/');
+    const { h } = rt;
+    let loads = 0;
+    const routes = {
+      path: '/',
+      component: () => h('div', null, h(router.Outlet, null)),
+      children: [
+        { path: '/', component: () => h('p', null, 'home') },
+        {
+          path: '/flaky',
+          loader: () => {
+            loads += 1;
+            return Promise.reject(new Error('no data'));
+          },
+          component: () => h('p', null, 'flaky'),
+        },
+      ],
+    };
+    const r = router.createRouter({ routes });
+    const app = mountApp(rt, router, r);
+    await settle();
+    r.prefetch('/flaky');
+    await settle(); // the swallowed rejection must stay swallowed
+    r.prefetch('/flaky'); // the failed run released the slot: a retry re-runs the loader
+    await settle();
+    expect(loads).toBe(2);
+    expect(window.location.pathname).toBe('/'); // prefetch never navigates
+    app.unmount();
+  });
+
   it('isActive matches exactly, by prefix, and ignores trailing slashes', async () => {
     const { rt, router } = await setup('http://localhost/users/42');
     const { h } = rt;

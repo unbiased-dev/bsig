@@ -233,6 +233,90 @@ describe('watch/untrack/scope/computed', () => {
   });
 });
 
+// B1 (plan step-1): a throwing effect must not brick the scheduler or leave
+// the tracker dirty. Each test imports a fresh runtime instance: on the
+// pre-fix runtime a throw poisons `isScheduled` for the whole module
+// instance, so a shared one would break every later test in the process.
+describe('scheduler resilience (B1)', () => {
+  it('a throwing effect does not stop later effects', async () => {
+    const { signal, effect } = await import('../runtime.js?b1-siblings');
+    const s = signal(0);
+    const seen = [];
+    const errors = [];
+    const onError = (e) => errors.push(e.message);
+    window.addEventListener('error', onError);
+    const originalError = console.error;
+    console.error = () => {}; // happy-dom prints errors dispatched from microtasks
+    try {
+      effect(() => { if (s.value === 1) throw new Error('effect-a-boom'); });
+      effect(() => { seen.push(s.value); });
+      await flush();
+      s.value = 1;
+      await flush();
+      s.value = 2;
+      await flush();
+    } finally {
+      console.error = originalError;
+      window.removeEventListener('error', onError);
+    }
+    expect(seen).toEqual([0, 1, 2]); // the sibling ran after the throw
+    expect(errors.filter((m) => m.includes('effect-a-boom'))).toHaveLength(1); // surfaced, once
+  });
+
+  it('work queued after a throwing effect still flushes', async () => {
+    const { signal, effect } = await import('../runtime.js?b1-cascade');
+    const a = signal(0), b = signal(0);
+    const seen = [];
+    const errors = [];
+    const onError = (e) => errors.push(e.message);
+    window.addEventListener('error', onError);
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      effect(() => { if (a.value === 1) throw new Error('cascade-boom'); });
+      effect(() => { b.value = a.value; });
+      effect(() => seen.push(b.value));
+      await flush();
+      a.value = 1;
+      await flush();
+    } finally {
+      console.error = originalError;
+      window.removeEventListener('error', onError);
+    }
+    expect(seen).toEqual([0, 1]); // the newly queued effect flushed in the same tick loop
+    expect(errors.filter((m) => m.includes('cascade-boom'))).toHaveLength(1);
+  });
+
+  it('an initial effect throw does not leave a zombie tracker', async () => {
+    const { signal, effect } = await import('../runtime.js?b1-zombie');
+    const s = signal(0);
+    let boom = 0;
+    expect(() => effect(() => { boom++; throw new Error('zombie-boom'); })).toThrow('zombie-boom');
+    expect(boom).toBe(1);
+    expect(s.value).toBe(0); // top-level read must not subscribe the zombie
+    s.value = 1;
+    await flush();
+    expect(boom).toBe(1); // the failed effect never runs again
+  });
+
+  it('untrack restores tracking after a throw', async () => {
+    const { signal, effect, untrack } = await import('../runtime.js?b1-untrack');
+    const s = signal(0);
+    let runs = 0, throws = 0;
+    effect(() => {
+      runs++;
+      try { untrack(() => { throw new Error('untrack-boom'); }); } catch { throws++; }
+      s.value; // must still be tracked after the caught throw
+    });
+    await flush();
+    expect(runs).toBe(1);
+    s.value = 1;
+    await flush();
+    expect(runs).toBe(2);
+    expect(throws).toBe(2);
+  });
+});
+
 describe('reactive', () => {
   it('arrays: push updates length readers', async () => {
     const st = reactive({ items: [] });
@@ -283,6 +367,48 @@ describe('reactive', () => {
     st.user.name = 'Bo';
     await flush();
     expect(st.user.name).toBe('Bo');
+  });
+
+  it('Object.prototype key names are ordinary keys', async () => {
+    // Fresh instance: on the pre-fix runtime the read throws while the effect
+    // is being created, leaving the shared tracker dirty and poisoning every
+    // later test in the process.
+    const { reactive, effect } = await import('../runtime.js?b2-proto-keys');
+    const st = reactive({ toString: 'orig', constructor: 'c', hasOwnProperty: 'h', valueOf: 'v' });
+    const seen = {};
+    let runs = 0;
+    effect(() => {
+      runs++;
+      seen.s = st.toString;
+      seen.c = st.constructor;
+      seen.h = st.hasOwnProperty;
+      seen.v = st.valueOf;
+    });
+    await flush();
+    expect(seen).toEqual({ s: 'orig', c: 'c', h: 'h', v: 'v' });
+    expect(runs).toBe(1);
+    st.toString = 'changed';
+    st.valueOf = 'changed-v';
+    await flush();
+    expect(runs).toBe(2);
+    expect(st.toString).toBe('changed');
+    expect(st.valueOf).toBe('changed-v');
+  });
+
+  it('__proto__ writes do not crash the proxy', async () => {
+    const { reactive, effect } = await import('../runtime.js?b2-proto-write');
+    const st = reactive({ a: 1 });
+    let runs = 0;
+    effect(() => { st.a; runs++; });
+    await flush();
+    expect(() => { st.__proto__ = { evil: 1 }; }).not.toThrow();
+    // Raw-JS semantics: the assignment replaced the target's prototype and
+    // the proxy keeps working (documented in skills/bsig/SKILL.md).
+    expect('evil' in st).toBe(true);
+    st.a = 2;
+    await flush();
+    expect(runs).toBe(2);
+    expect(st.a).toBe(2);
   });
 });
 
@@ -464,5 +590,318 @@ describe('append (dynamic child resolution)', () => {
     await flush();
     expect(p.textContent).toBe('va'); // the array's cleanup stopped the live child
     target.remove();
+  });
+});
+
+// B3 (plan step-3): every activation rebuilds the branch — thunked children
+// build fresh nodes, and retained prebuilt component nodes are rebuilt by the
+// runtime on re-insert — so bindings stay live and onMount refires.
+describe('Show/If branch lifecycle (B3)', () => {
+  it('Show rebuilds thunked children across hide/show', async () => {
+    const show = signal(true);
+    const n = signal(0);
+    let mounts = 0, unmounts = 0, runs = 0;
+    const Child = () => {
+      onMount(() => mounts++);
+      onUnmount(() => unmounts++);
+      return h('p', null, () => { runs++; return `n=${n.value}`; });
+    };
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null, h(Show, { when: () => show.value }, () => h(Child, null))));
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    show.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+    expect([mounts, unmounts]).toEqual([1, 1]);
+    show.value = true;
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    expect(mounts).toBe(2); // rebuilt, not revived
+    n.value = 1;
+    await flush();
+    expect(target.textContent).toBe('n=1'); // the rebuilt branch is live
+    unmount();
+    target.remove();
+  });
+
+  it('If factories stay live across switches', async () => {
+    const cond = signal(true);
+    const n = signal(0);
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null, If(() => cond.value, () => h('p', null, () => `n=${n.value}`))));
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    cond.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+    cond.value = true;
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    n.value = 1;
+    await flush();
+    expect(target.textContent).toBe('n=1');
+    unmount();
+    target.remove();
+  });
+
+  it('prebuilt Show branches revive on re-show', async () => {
+    // Decision (2026-10-15, see plans/step-3.md): a re-shown branch is
+    // revived — the stopped component is rebuilt (fresh node) so onMount
+    // refires and its bindings stay live.
+    const show = signal(true);
+    const n = signal(0);
+    let mounts = 0, unmounts = 0;
+    const Child = () => {
+      onMount(() => mounts++);
+      onUnmount(() => unmounts++);
+      return h('p', null, () => `n=${n.value}`);
+    };
+    const prebuilt = h(Child, null);
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null, h(Show, { when: () => show.value }, prebuilt)));
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    show.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+    expect([mounts, unmounts]).toEqual([1, 1]);
+    show.value = true;
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    expect([mounts, unmounts]).toEqual([2, 1]); // stopped on hide, rebuilt on re-show
+    n.value = 1;
+    await flush();
+    expect(target.textContent).toBe('n=1'); // the rebuilt branch is live
+    unmount();
+    expect([mounts, unmounts]).toEqual([2, 2]);
+    target.remove();
+  });
+
+  it('retained prebuilt nodes revive in user thunks', async () => {
+    // The rebuild generalizes beyond Show/If: any dynamic child that returns
+    // a stored, already-removed component node gets a fresh live subtree.
+    const show = signal(true);
+    const n = signal(0);
+    let mounts = 0, unmounts = 0;
+    const Child = () => {
+      onMount(() => mounts++);
+      onUnmount(() => unmounts++);
+      return h('p', null, () => `n=${n.value}`);
+    };
+    const prebuilt = h(Child, null);
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null, () => (show.value ? [prebuilt] : [])));
+    await flush();
+    expect(target.textContent).toBe('n=0');
+    show.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+    expect([mounts, unmounts]).toEqual([1, 1]);
+    show.value = true;
+    await flush();
+    expect([mounts, unmounts]).toEqual([2, 1]); // rebuilt, not refired dead
+    n.value = 1;
+    await flush();
+    expect(target.textContent).toBe('n=1');
+    unmount();
+    expect([mounts, unmounts]).toEqual([2, 2]);
+    target.remove();
+  });
+
+  it('a dead retained node passed as a child to a new component revives', async () => {
+    // Locks the direct-insert path (append): a stopped prebuilt reference
+    // handed to a freshly built wrapper must rebuild, not insert dead.
+    let mounts = 0, unmounts = 0;
+    const n = signal(0);
+    const Child = () => {
+      onMount(() => mounts++);
+      onUnmount(() => unmounts++);
+      return h('p', null, () => `n=${n.value}`);
+    };
+    const prebuilt = h(Child, null);
+    const show = signal(true);
+    const first = document.createElement('div');
+    document.body.appendChild(first);
+    const unmount = mount(first, () => h('div', null, () => (show.value ? [prebuilt] : [])));
+    await flush();
+    show.value = false;
+    await flush();
+    expect([mounts, unmounts]).toEqual([1, 1]); // removed -> stopped
+    const Wrap = (props) => h('section', null, props.children);
+    const second = document.createElement('div');
+    document.body.appendChild(second);
+    const unmount2 = mount(second, () => h(Wrap, null, prebuilt));
+    await flush();
+    expect([mounts, unmounts]).toEqual([2, 1]); // rebuilt on insert
+    n.value = 1;
+    await flush();
+    expect(second.textContent).toBe('n=1'); // live bindings
+    unmount2();
+    expect([mounts, unmounts]).toEqual([2, 2]);
+    unmount();
+    first.remove();
+    second.remove();
+  });
+});
+
+// B4 (plan step-4): switching an If must stop the outgoing branch scope.
+// Array-returning branches (Show always returns one) leak today: removal is
+// per node and only `node.$s` is stopped, never the array's branch stop.
+describe('branch cleanup (B4)', () => {
+  it('removed If branches stop updating (array return)', async () => {
+    const cond = signal(true);
+    const tick = signal(0);
+    let runs = 0;
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null,
+      If(() => cond.value, () => [h('b', null, () => { runs++; return `r${tick.value}`; })])));
+    await flush();
+    expect(runs).toBe(1);
+    cond.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+    const frozen = runs;
+    tick.value = 1;
+    await flush();
+    expect(runs).toBe(frozen); // no updates from the detached branch
+    unmount();
+    target.remove();
+  });
+
+  it('Show fallback arrays stop updating after switching away', async () => {
+    const show = signal(false);
+    const tick = signal(0);
+    let runs = 0;
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null,
+      h(Show, {
+        when: () => show.value,
+        fallback: () => [h('i', null, () => { runs++; return `f${tick.value}`; })],
+      }, () => h('b', null, 'in'))));
+    await flush();
+    expect(target.textContent).toBe('f0');
+    expect(runs).toBe(1);
+    show.value = true;
+    await flush();
+    expect(target.textContent).toBe('in');
+    const frozen = runs;
+    tick.value = 1;
+    await flush();
+    expect(runs).toBe(frozen); // the outgoing fallback scope was stopped
+    unmount();
+    target.remove();
+  });
+
+  it('plugin-thunked Show children are released by the region unmount (documented residual)', async () => {
+    // Effects created while resolving thunked Show children belong to the
+    // dynamic region scope, not the branch scope, so they survive toggles
+    // until the enclosing region unmounts. Plan step-4 documents this
+    // residual; the exact count is locked so a behavior change is noticed.
+    const show = signal(true);
+    const s = signal(0);
+    let runs = 0;
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const unmount = mount(target, () => h('div', null,
+      h(Show, { when: () => show.value }, () => h('p', null, () => { runs++; return `v${s.value}`; }))));
+    await flush();
+    expect(runs).toBe(1);
+    for (let i = 0; i < 3; i++) {
+      show.value = false;
+      await flush();
+      show.value = true;
+      await flush();
+    }
+    expect(runs).toBe(4); // one render per activation
+    const before = runs;
+    s.value = 1;
+    await flush();
+    expect(runs).toBe(before + 4); // one effect leaked per activation
+    unmount();
+    s.value = 2;
+    await flush();
+    expect(runs).toBe(before + 4); // released with the region
+    target.remove();
+  });
+});
+
+// B5 (plan step-5): unkeyed lists key by item identity, so duplicate values
+// share a cache entry and collapse on the next update; duplicate results from
+// a key function collapse the same way.
+describe('For duplicate keys (B5)', () => {
+  it('duplicate values without a key render and stay correct', async () => {
+    const items = signal(['a', 'b']);
+    const target = document.createElement('div');
+    target.appendChild(h('ul', null, For(items, null, (x) => h('li', null, x))));
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['a', 'b']);
+    items.value = ['a', 'a'];
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['a', 'a']);
+    items.value = ['a'];
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['a']);
+    items.value = [];
+    await flush();
+    expect(target.querySelectorAll('li').length).toBe(0);
+  });
+
+  it('unkeyed lists starting with duplicates render all rows', async () => {
+    const items = signal(['a', 'a']);
+    const target = document.createElement('div');
+    target.appendChild(h('ul', null, For(items, null, (x) => h('li', null, x))));
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['a', 'a']);
+    items.value = ['a', 'a'];
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['a', 'a']);
+  });
+
+  it('duplicate key-function results do not drop rows', async () => {
+    const items = signal([{ id: 1, t: 'x' }, { id: 1, t: 'y' }]);
+    const target = document.createElement('div');
+    target.appendChild(h('ul', null, For(items, (r) => r.id, (r) => h('li', null, r.t))));
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['x', 'y']);
+    items.value = [{ id: 1, t: 'x' }, { id: 1, t: 'y' }];
+    await flush();
+    expect([...target.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['x', 'y']);
+  });
+});
+
+// B6 (plan step-6): boolean children. `false` is skipped; `true` currently
+// stringifies to "true". Only the `true` fix changes observable behavior.
+describe('boolean children (B6)', () => {
+  it('boolean true children render nothing (like false)', () => {
+    const el = h('div', null, true, 'x', false, null, undefined);
+    expect(el.textContent).toBe('x');
+  });
+
+  it('dynamic true and false both render nothing', async () => {
+    const flag = signal(true);
+    const target = document.createElement('div');
+    target.appendChild(h('div', null, () => flag.value));
+    expect(target.textContent).toBe('');
+    flag.value = false;
+    await flush();
+    expect(target.textContent).toBe('');
+  });
+
+  it('props.children booleans are skipped', () => {
+    const el = h('div', { children: [true, 'x', false] });
+    expect(el.textContent).toBe('x');
+  });
+
+  it('zero and empty string still render', () => {
+    expect(h('div', null, 0).textContent).toBe('0');
+    expect(h('div', null, '').textContent).toBe('');
+    expect(h('div', { children: [0, ''] }).textContent).toBe('0');
   });
 });

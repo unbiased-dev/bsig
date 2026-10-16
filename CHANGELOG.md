@@ -59,9 +59,38 @@ routes gain a `loader`.
   router tests plus a 22-test router browser suite covering guard
   redirect/block and blocked back-navigation through real navigations.
 
-## Unreleased
+## v0.7.1 — 2026-10-16
 
-Tooling only — no runtime or API changes.
+Runtime hardening from the 2026-10-15 review (six fixes, no public API
+changes) plus the move of the test suite to Bun.
+
+- **A throwing effect no longer bricks reactivity.** An error inside an
+  effect is rethrown asynchronously (as an uncaught error) and the rest of the
+  batch still runs, instead of leaving the scheduler wedged so every later
+  signal write is silently dropped.
+- **`reactive` handles `Object.prototype` keys.** Reads/writes of `toString`,
+  `constructor`, `hasOwnProperty`, … are ordinary tracked keys instead of
+  throwing (`subs.add is not a function`), and `__proto__` keeps raw-JS
+  prototype semantics without crashing the notification path.
+- **`Show`/`If` branches revive on re-show.** Hiding a branch stops it; a
+  prebuilt branch (element children, manual `h()` nodes) is now rebuilt on
+  re-show — bindings live again, `onMount` refires, fresh node identity —
+  instead of refiring with dead bindings.
+- **`If` stops the outgoing branch scope on switch.** Effects created while a
+  branch was built (including array-returning branches) no longer keep
+  updating detached nodes after a toggle.
+- **`For` is duplicate-safe.** Equal values in an unkeyed list, or repeated
+  key-function results, get their own nodes instead of collapsing rows;
+  duplicates are rebuilt on every update (fix the key if that churn matters).
+- **`true` children render nothing.** Booleans now behave like `false`
+  (`0` and `''` still render as text).
+- Docs: the `Show`/`If` branch lifecycle and branch-scope contract, `reactive`
+  limitations (membership/spread reads, native collections, prototype keys),
+  `<Component is>` requiring a thunk, parent-first `onUnmount` order, and
+  `Transition` leaves needing a real `transitionend`.
+- Size: `runtime.js` grew 5444 → 5638 B minified (2449 → 2547 gzip,
+  2204 → 2304 brotli, +3.6%) for the six fixes; `router.js` and `auth.js` are
+  unchanged. Measured with `Bun.build({ minify: true })`.
 
 - **Test suite moved to Bun.** `bun test` replaces `node --test`; assertions use
   `bun:test`'s `expect`, the DOM is **happy-dom** (registered by `test/setup.ts`
@@ -83,9 +112,10 @@ Tooling only — no runtime or API changes.
 - **100% coverage.** Every shipped module (`runtime`, `router`, `auth`, the
   JSX runtimes, and the plugins) is fully covered by `% Funcs` and `% Lines`;
   `bunfig.toml` keeps a floor so the harness cannot rot.
-- **Typecheck.** `bun run typecheck` runs `tsc` (root `tsconfig.json`, with
-  `typescript` + `@types/bun` dev-deps) over the public `.d.ts` and the
-  TypeScript test harness.
+- **Typecheck.** `bun run typecheck` now runs `bun check` (Bun ≥ 1.4.3,
+  TS 7 semantics) from the root `tsconfig.json` over the public `.d.ts` and
+  the TypeScript test harness; the `typescript` dev-dep is gone (the demo
+  keeps `tsc` for stock-consumer coverage).
 - `package-lock.json` replaced by `bun.lock`.
 
 ## v0.6.2 — 2026-10-14

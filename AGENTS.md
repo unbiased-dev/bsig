@@ -97,10 +97,12 @@ case, it belongs in an opt-in entry — or not at all.
 - `bun test` runs the suite (Bun's built-in runner; config in `bunfig.toml`).
   `bun run test:coverage` adds `text` + `lcov` coverage (`coverage/`), and
   `bun run test:ci` writes a JUnit report (`junit.xml`) as well.
-- `bun run typecheck` runs `tsc --noEmit` from the root `tsconfig.json` over the
-  public `.d.ts` files and the TypeScript test harness (`test/*.ts`, e.g.
-  `helpers.ts`/`setup.ts`). Test bodies are `.mjs` and are not type-checked;
-  new harness types belong in `helpers.ts`.
+- `bun run typecheck` runs `bun check` (requires Bun ≥ 1.4.3) from the root
+  `tsconfig.json` over the public `.d.ts` files and the TypeScript test harness
+  (`test/*.ts`, e.g. `helpers.ts`/`setup.ts`). Test bodies are `.mjs` and are not
+  type-checked; new harness types belong in `helpers.ts`. `bun check` checks with
+  the TypeScript version matched to your Bun release (TS 7 semantics); the demo
+  keeps `tsc` so an older, stock-consumer toolchain stays covered.
 - The DOM is **happy-dom**, registered globally by `test/setup.ts` and preloaded
   for every file — no per-file jsdom boilerplate. Tests flush with
   `setTimeout(0)`; `test/setup.ts` resets `document.body` between tests.

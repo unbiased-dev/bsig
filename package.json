@@ -1,6 +1,6 @@
 {
   "name": "bsig",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/unbiased-dev/bsig.git"
@@ -79,7 +79,7 @@
     "test:coverage": "bun test --coverage",
     "test:ci": "bun test --coverage --reporter=junit --reporter-outfile=./junit.xml",
     "test:browser": "BUN_BSIG_BROWSER=1 bun test test/browser --timeout 60000",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "bun check"
   },
   "sideEffects": false,
   "type": "module",
@@ -87,7 +87,6 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.1",
     "@types/bun": "1.4.3",
-    "happy-dom": "21.0.1",
-    "typescript": "5.4.5"
+    "happy-dom": "21.0.1"
   }
 }

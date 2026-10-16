@@ -27,13 +27,16 @@ signal update.
 - Conditionals in JSX use `<Show>` (or `&&`), not React-style ternaries
   returning components — either works if values are plain, but `<Show>`
   caches branches.
+- The runtime writes `props.children` onto the props object when it is
+  absent, so props are mutated in place — don't freeze or seal JSX props
+  objects (frozen props throw).
 
 ## Setup (stock Vite, no template)
 
 ```sh
 npm create vite@latest my-app -- --template vanilla-ts
 cd my-app
-npm install github:unbiased-dev/bsig#v0.7.0
+npm install github:unbiased-dev/bsig#v0.7.1
 ```
 
 ## Bun alternative
@@ -142,6 +145,20 @@ const form = reactive({ name: 'Ada', tags: ['a'] });
 form.tags.push('b'); // length + index readers update
 delete form.name; // key readers update
 ```
+
+Limits to know about:
+
+- Only `get`/`set`/`delete` are tracked. `in`, `Object.keys`, spreads
+  (`{...form}`) and `Object.assign` are not — an effect that only enumerates
+  keys will not re-run when one is added or removed. Keep a separate
+  `signal`/`computed` of the key set, or read the specific properties.
+- Do not store native collections (`Set`, `Map`, `Date`, `Promise`) in
+  reactive state. Their methods throw when called on the proxy
+  (`reactive({ set: new Set() }).set.add(1)` → "Set operation called on
+  non-Set object"). Keep them in a plain variable or an outer scope.
+- Prototype key names (`toString`, `constructor`, `valueOf`, …) are ordinary
+  tracked keys. `state.__proto__ = …` follows raw-JS semantics: it sets the
+  prototype of the underlying object rather than becoming a data property.
 
 ## effect(fn) / scope(fn) / untrack(fn)
 
@@ -252,8 +269,22 @@ export function Card(props: CardProps) {
 ## Show (conditional branches)
 
 `<Show when={...} fallback={...}>children</Show>`. `when` accepts a plain
-value (auto-thunked by the plugin), a signal, or a getter. Branches are
-cached — toggling back reuses DOM.
+value (auto-thunked by the plugin), a signal, or a getter.
+
+Branch lifecycle: hiding a branch stops it (`onUnmount` fires, its bindings go
+dead); re-showing **rebuilds** it — fresh nodes, `onMount` refires, bindings
+are live. Node identity does not survive a hide/show. The plugin already
+thunks JSX children so they rebuild; a prebuilt node passed as a child is
+rebuilt by the runtime the same way.
+
+Branch scope: a toggle stops the branch's render scope — the effects created
+while the branch factory built its nodes (including array returns). Effects
+owned by an enclosing scope survive the toggle until that scope unmounts: a
+**prebuilt** node's bindings belong to the scope that built it, and a
+plugin-thunked JSX child is resolved by the surrounding dynamic region, so
+its per-activation effects are released only when that region unmounts. If
+per-branch work must stop with the branch, keep it inside a component —
+components own their own scope.
 
 ```tsx
 import { Show } from 'bsig';
@@ -274,6 +305,10 @@ import { Show } from 'bsig';
 `If(cond, renderFn, fallback?)`. Unlike `<Show>`, the compiler does NOT
 help here: pass real thunks yourself. Prefer `<Show>` inside JSX.
 
+Each activation re-runs `renderFn` (or `fallback`), so thunks build fresh
+nodes — the same revived lifecycle as `<Show>`: a stopped branch does not come
+back; it is rebuilt. A static fallback node is reused as-is.
+
 ```tsx
 import { If } from 'bsig';
 
@@ -291,6 +326,14 @@ const branch = If(
 getter. `key` is a property name, a `(item, index) => key` function, or
 `null` (identity). Renders are cached per key: reorder/moves reuse DOM via
 LIS reconciliation. Call it bare in JSX — never wrap it.
+
+Key semantics: `key = null` keys rows by the item itself (identity) — a real
+key, not "no keying", so values must be unique. Identity is deliberate: nodes
+stay attached to their item across reorders, whereas index keys would leave
+stale content at old positions. Pass a key (or a unique field) for lists that
+reorder. Duplicate keys (equal values, or repeated results from a key
+function) do not drop rows — each duplicate gets its own node — but they are
+rebuilt on every update; fix the key if that churn matters.
 
 ```tsx
 import { For } from 'bsig';
@@ -314,7 +357,12 @@ todos.value.map((t) => <li key={t.id}>{t.text}</li>) // DON'T — no key prop, n
 ## Component (dynamic switching)
 
 `<Component is={...}>` renders whichever component `is` resolves to and
-unmounts the old tree on switch. `is` may be a value or a getter.
+unmounts the old tree on switch.
+
+`is` must be a getter that returns the component (`() => PaneA`). The plugin
+auto-thunks JSX `is={...}` values, so in JSX you can write a plain value or a
+getter. With hand-written `h()` calls, a raw component function is invoked as
+`is()` with no props and renders an empty element — pass `is: () => PaneA`.
 
 ```tsx
 import { Component } from 'bsig';
@@ -329,6 +377,14 @@ import { Component } from 'bsig';
 Wraps a single child (element or a `<Show>`/conditional thunk). Classes are
 `[active, from, to]` triples plus an `idle` class restored afterwards.
 
+A leave starts by adding `leave[1]`, then `leave[0]` on the next frame, and
+the node is only removed on a real `transitionend`. If no transition actually
+runs — no matching CSS rule for the classes, `prefers-reduced-motion`
+disabling animation, or the node already detached — that event never fires
+and the node stays in the DOM. Make sure the leave classes produce a
+transition (and respect `prefers-reduced-motion` by shortening it, not by
+removing it, if you rely on leave cleanup).
+
 ```tsx
 import { Transition, Show } from 'bsig';
 
@@ -342,7 +398,11 @@ import { Transition, Show } from 'bsig';
 ## onMount / onUnmount (lifecycles)
 
 Call inside a component body. `onMount` fires after insert (node is attached,
-children first); `onUnmount` fires on removal.
+children first — a parent observes a fully mounted subtree); `onUnmount`
+fires on removal, **parent first** — a parent's hooks run before its
+descendants' component cleanups. Mount and unmount orders are deliberately
+not mirrored; don't rely on a child being cleaned up before its parent's
+`onUnmount`.
 
 ```tsx
 import { onMount, onUnmount } from 'bsig';

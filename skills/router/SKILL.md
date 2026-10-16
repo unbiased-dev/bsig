@@ -177,7 +177,7 @@ components.
 ## Installing this skill
 
 ```sh
-npx -p github:unbiased-dev/bsig#v0.7.0 bsig-skill router
-# or: npx -p github:unbiased-dev/bsig#v0.7.0 bsig-router-skill
+npx -p github:unbiased-dev/bsig#v0.7.1 bsig-skill router
+# or: npx -p github:unbiased-dev/bsig#v0.7.1 bsig-router-skill
 # variants: --opencode | --claude | --global | --dest <dir>
 ```
